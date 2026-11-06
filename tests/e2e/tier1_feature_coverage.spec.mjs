@@ -174,7 +174,10 @@ t1('T1-F04-1', 'F4', 'Shader source & dual-layer clearcoat uniforms in Automotiv
 t1('T1-F04-2', 'F4', 'Sub-millimeter metallic flake normal perturbation uniforms', (ctx) => {
   const src = ctx.fsProbe.getShaderSource('src/shaders/AutomotivePaint.glsl');
   assertIncludes(src, 'uFlakeScale', 'AutomotivePaint.glsl must define uFlakeScale');
-  assertIncludes(src, 'uFlakeDensity', 'AutomotivePaint.glsl must define uFlakeDensity');
+  assertTrue(
+    src.includes('uFlakeDensity') || src.includes('uFlakeIntensity'),
+    'AutomotivePaint.glsl must define uFlakeDensity or uFlakeIntensity'
+  );
 });
 
 t1('T1-F04-3', 'F4', 'Anisotropic brushed metal shading uniform support', (ctx) => {

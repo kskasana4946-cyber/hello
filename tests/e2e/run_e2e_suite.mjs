@@ -41,7 +41,7 @@ function parseCliFlags(argv) {
     if (arg.startsWith('--tier=')) {
       tierArg = arg.split('=')[1].trim().toLowerCase();
     } else if (arg.startsWith('--feature=')) {
-      featureArg = arg.split('=')[1].trim().toUpperCase();
+      featureArg = arg.split('=')[1].trim().toUpperCase().replace(/^F0+([1-9])$/, 'F$1');
     } else if (arg === '--discover') {
       discoverOnly = true;
     } else if (arg === '--self-test') {
@@ -71,7 +71,8 @@ function parseCliFlags(argv) {
   } else {
     const mainTsExists = fs.existsSync(path.join(REPO_ROOT, 'src/main.ts'));
     const skyPaksExist = fs.existsSync(path.join(REPO_ROOT, 'assets/paks/sky/sky_golden_hour.pak'));
-    mode = mainTsExists && skyPaksExist ? 'live' : 'auto';
+    const trackPaksExist = fs.existsSync(path.join(REPO_ROOT, 'assets/paks/tracks/track_golden_gp.pak'));
+    mode = mainTsExists && skyPaksExist && trackPaksExist ? 'live' : 'auto';
   }
 
   return { requestedTiers, featureArg, discoverOnly, selfTestMode, liveMode, mode };

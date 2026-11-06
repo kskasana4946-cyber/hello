@@ -1734,6 +1734,9 @@ t2('T2-F39-03', 'F39', '[BVA] Player in last place at lap end is eliminated and 
 t2('T2-F39-04', 'F39', '[BVA] Tie-breaker when two AI racers are separated by 0.01m eliminates strictly the trailing racer', (ctx) => {
   const { aiDirector } = ctx.engineApi;
   aiDirector.configure('HARD', 'KNOCKOUT_ELIMINATION');
+  aiDirector.racers.forEach((r, idx) => {
+    r.totalDistance = 2000 - idx * 50;
+  });
   aiDirector.racers[4].totalDistance = 1500.01;
   aiDirector.racers[5].totalDistance = 1500.00;
   const ev = aiDirector.eliminateLastPlaceRacer();
