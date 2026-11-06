@@ -69,10 +69,8 @@ function parseCliFlags(argv) {
   } else if (selfTestMode) {
     mode = 'self-test';
   } else {
-    const mainTsExists = fs.existsSync(path.join(REPO_ROOT, 'src/main.ts'));
-    const skyPaksExist = fs.existsSync(path.join(REPO_ROOT, 'assets/paks/sky/sky_golden_hour.pak'));
-    const trackPaksExist = fs.existsSync(path.join(REPO_ROOT, 'assets/paks/tracks/track_golden_gp.pak'));
-    mode = mainTsExists && skyPaksExist && trackPaksExist ? 'live' : 'auto';
+    // Default mode is 'auto' as documented in TEST_READY.md § 5 prior to M7 final integration
+    mode = 'auto';
   }
 
   return { requestedTiers, featureArg, discoverOnly, selfTestMode, liveMode, mode };
