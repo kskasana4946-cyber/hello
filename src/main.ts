@@ -351,6 +351,12 @@ export function initApexGame(): any {
     controller.completeBoot();
   });
   const paddockUI = new PaddockShowroomUI(progression, container);
+  paddockUI.onLaunchRaceCallback = () => {
+    controller.launchRace();
+  };
+  paddockUI.onVehicleSelectCallback = (vehId: string) => {
+    controller.selectVehicle(vehId);
+  };
   const postRaceCeremony = new PostRaceRewardCeremony(container, null);
   const raceHUD = new RaceHUD(container);
 
@@ -620,6 +626,10 @@ export function initApexGame(): any {
       (physicsWorld as any).resetVehicleState();
       aiDirector.configure(selectedAiDifficulty, selectedFormat);
       phase = 'RACING';
+      if (typeof document !== 'undefined') {
+        const paddockEl = document.getElementById('apex-paddock-showroom-ui');
+        if (paddockEl) paddockEl.style.display = 'none';
+      }
       if (cameraMode === 'SHOWROOM') {
         cameraMode = 'CHASE';
       }
