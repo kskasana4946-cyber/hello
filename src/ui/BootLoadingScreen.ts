@@ -37,8 +37,12 @@ export class BootLoadingScreen {
   private completed: boolean = false;
   private audioCtx: AudioContext | null = null;
   public v12RoarPlayedCount: number = 0;
+  public onComplete?: () => void;
 
-  constructor(container?: HTMLElement | null) {
+  constructor(container?: HTMLElement | null, onComplete?: () => void) {
+    if (onComplete) {
+      this.onComplete = onComplete;
+    }
     if (container) {
       this.initialize(container);
     }
@@ -357,6 +361,12 @@ export class BootLoadingScreen {
     this.completed = true;
 
     this.playV12Roar();
+
+    if (typeof this.onComplete === 'function') {
+      try {
+        this.onComplete();
+      } catch {}
+    }
 
     if (this.rootElement) {
       this.rootElement.style.transition = 'opacity 0.4s ease';

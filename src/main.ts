@@ -347,7 +347,9 @@ export function initApexGame(): any {
   };
 
   // 3. UI Screens
-  const bootLoadingScreen = new BootLoadingScreen(container);
+  const bootLoadingScreen = new BootLoadingScreen(container, () => {
+    controller.completeBoot();
+  });
   const paddockUI = new PaddockShowroomUI(progression, container);
   const postRaceCeremony = new PostRaceRewardCeremony(container, null);
   const raceHUD = new RaceHUD(container);
@@ -757,7 +759,12 @@ export function initApexGame(): any {
     lastFrameTime = now;
 
     // Phase Specific Updates
-    if (phase === 'RACING') {
+    if (phase === 'BOOT') {
+      if (bootProgress < 1.0) {
+        bootProgress = Math.min(1.0, bootProgress + dt * 0.85);
+        bootLoadingScreen.setBootProgress(bootProgress);
+      }
+    } else if (phase === 'RACING') {
       // Gather Player Input
       const throttle = keysDown.has('ArrowUp') || keysDown.has('KeyW') ? 1.0 : 0.0;
       const brake = keysDown.has('ArrowDown') || keysDown.has('KeyS') ? 1.0 : 0.0;
