@@ -332,11 +332,8 @@ export class SplineTrackStreamer implements ISplineProvider {
     let sStar = (theta / twoPi) * L;
 
     if (hintS !== undefined && Number.isFinite(hintS)) {
-      const wrappedHint = (((hintS % L) + L) % L);
-      const diff = Math.abs(wrappedHint - sStar);
-      if (diff < 10.0 || diff > L - 10.0) {
-        sStar = wrappedHint;
-      }
+      // Normalize sStar safely within [0, L)
+      sStar = (((sStar % L) + L) % L);
     }
 
     const frame = this.getFrameAtArcLength(sStar);

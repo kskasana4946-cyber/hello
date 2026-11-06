@@ -226,9 +226,10 @@ export class RapierVehicleWorld {
     slipAngleRad: number,
     params: PacejkaParams = { B: 10.0, C: 1.9, D: 1.38, E: 0.97 }
   ): number {
-    if (normalLoadN <= 0) return 0;
+    if (!Number.isFinite(normalLoadN) || normalLoadN <= 0) return 0;
+    const alpha = Number.isFinite(slipAngleRad) ? slipAngleRad : 0;
     const { B, C, D, E } = params;
-    const bx = B * slipAngleRad;
+    const bx = B * alpha;
     const inner = bx - E * (bx - Math.atan(bx));
     return normalLoadN * D * Math.sin(C * Math.atan(inner));
   }
@@ -238,9 +239,10 @@ export class RapierVehicleWorld {
    */
   public static evaluateAerodynamicDownforce(spec: VehicleSpec, speedMs: number): number {
     const frontalArea = 1.95;
-    const baseCl = 0.45 + spec.tier * 0.35;
-    const fanBonusN = spec.id === 'fan_car' ? 6500 : 0;
-    return 0.5 * RapierVehicleWorld.AIR_DENSITY * baseCl * frontalArea * speedMs * speedMs + fanBonusN;
+    const baseCl = 0.45 + (spec?.tier ?? 0) * 0.35;
+    const fanBonusN = spec?.id === 'fan_car' ? 6500 : 0;
+    const v = Number.isFinite(speedMs) ? Math.max(0, speedMs) : 0;
+    return 0.5 * RapierVehicleWorld.AIR_DENSITY * baseCl * frontalArea * v * v + fanBonusN;
   }
 
   /**
@@ -263,10 +265,13 @@ export class RapierVehicleWorld {
   ): PhysicsVehicleState {
     const frame = this.splineProvider.getFrameAtArcLength(initialAlongOffset);
     const rideHeight = 0.35;
+    const isNormalUp = Math.abs(frame.normal[1]) >= Math.abs(frame.binormal[1]);
+    const U = isNormalUp ? frame.normal : frame.binormal;
+    const N = isNormalUp ? frame.binormal : frame.normal;
     const pos: Vec3Tuple = [
-      frame.position[0] + frame.binormal[0] * initialLateralOffset + frame.normal[0] * rideHeight,
-      frame.position[1] + frame.binormal[1] * initialLateralOffset + frame.normal[1] * rideHeight,
-      frame.position[2] + frame.binormal[2] * initialLateralOffset + frame.normal[2] * rideHeight,
+      frame.position[0] + N[0] * initialLateralOffset + U[0] * rideHeight,
+      frame.position[1] + N[1] * initialLateralOffset + U[1] * rideHeight,
+      frame.position[2] + N[2] * initialLateralOffset + U[2] * rideHeight,
     ];
 
     const quarterWeightN = (spec.massKg * RapierVehicleWorld.GRAVITY) / 4;
@@ -295,8 +300,8 @@ export class RapierVehicleWorld {
       position: pos,
       velocity: [0, 0, 0],
       forward: [...frame.tangent],
-      up: [...frame.normal],
-      right: [...frame.binormal],
+      up: [...U],
+      right: [...N],
       speedMs: 0,
       speedKph: 0,
       alongOffset: initialAlongOffset,
@@ -354,13 +359,16 @@ export class RapierVehicleWorld {
   }
 
   public setControlInput(id: string, input: VehicleControlInput): void {
+    const rawThrot = Number(input?.throttle);
+    const rawBrake = Number(input?.brake);
+    const rawSteer = Number(input?.steer);
     this.controls.set(id, {
-      throttle: Math.max(0, Math.min(1, input.throttle)),
-      brake: Math.max(0, Math.min(1, input.brake)),
-      steer: Math.max(-1, Math.min(1, input.steer)),
-      handbrake: Boolean(input.handbrake),
-      nitro: Boolean(input.nitro),
-      drsOverride: input.drsOverride,
+      throttle: Number.isFinite(rawThrot) ? Math.max(0, Math.min(1, rawThrot)) : 0,
+      brake: Number.isFinite(rawBrake) ? Math.max(0, Math.min(1, rawBrake)) : 0,
+      steer: Number.isFinite(rawSteer) ? Math.max(-1, Math.min(1, rawSteer)) : 0,
+      handbrake: Boolean(input?.handbrake),
+      nitro: Boolean(input?.nitro),
+      drsOverride: input?.drsOverride,
     });
   }
 
@@ -381,26 +389,33 @@ export class RapierVehicleWorld {
     const state = this.vehicles.get(id);
     if (!state) return;
     const frame = this.splineProvider.getFrameAtArcLength(state.alongOffset);
-    if (lateralOffsetMeters !== undefined) {
+    const isNormalUp = Math.abs(frame.normal[1]) >= Math.abs(frame.binormal[1]);
+    const U = isNormalUp ? frame.normal : frame.binormal;
+    const N = isNormalUp ? frame.binormal : frame.normal;
+    if (lateralOffsetMeters !== undefined && Number.isFinite(lateralOffsetMeters)) {
       state.lateralOffset = lateralOffsetMeters;
       state.position = [
-        frame.position[0] + frame.binormal[0] * lateralOffsetMeters + frame.normal[0] * state.verticalOffset,
-        frame.position[1] + frame.binormal[1] * lateralOffsetMeters + frame.normal[1] * state.verticalOffset,
-        frame.position[2] + frame.binormal[2] * lateralOffsetMeters + frame.normal[2] * state.verticalOffset,
+        frame.position[0] + N[0] * lateralOffsetMeters + U[0] * state.verticalOffset,
+        frame.position[1] + N[1] * lateralOffsetMeters + U[1] * state.verticalOffset,
+        frame.position[2] + N[2] * lateralOffsetMeters + U[2] * state.verticalOffset,
       ];
     }
-    const speedMs = speedKph / 3.6;
-    const cosA = Math.cos(headingAngleRelativeToTangentRad);
-    const sinA = Math.sin(headingAngleRelativeToTangentRad);
+    const safeSpeedKph = Number.isFinite(speedKph) ? Math.max(0, speedKph) : 0;
+    const safeAngle = Number.isFinite(headingAngleRelativeToTangentRad) ? headingAngleRelativeToTangentRad : 0;
+    const speedMs = safeSpeedKph / 3.6;
+    const cosA = Math.cos(safeAngle);
+    const sinA = Math.sin(safeAngle);
     const dir: Vec3Tuple = [
-      frame.tangent[0] * cosA + frame.binormal[0] * sinA,
-      frame.tangent[1] * cosA + frame.binormal[1] * sinA,
-      frame.tangent[2] * cosA + frame.binormal[2] * sinA,
+      frame.tangent[0] * cosA + N[0] * sinA,
+      frame.tangent[1] * cosA + N[1] * sinA,
+      frame.tangent[2] * cosA + N[2] * sinA,
     ];
     state.forward = dir;
+    state.up = [...U];
+    state.right = [...N];
     state.velocity = [dir[0] * speedMs, dir[1] * speedMs, dir[2] * speedMs];
     state.speedMs = speedMs;
-    state.speedKph = speedKph;
+    state.speedKph = safeSpeedKph;
   }
 
   /**
@@ -512,7 +527,8 @@ export class RapierVehicleWorld {
    * Advances the physics simulation by dtSeconds using a fixed 240Hz (1/240s) sub-stepper.
    */
   public step(dtSeconds: number, maxSubSteps = 2400): number {
-    this.accumulatorSec += Math.max(0, dtSeconds);
+    const safeDt = Number.isFinite(dtSeconds) ? Math.max(0, dtSeconds) : 0;
+    this.accumulatorSec += safeDt;
     let subStepsRun = 0;
     while (this.accumulatorSec + 1e-9 >= RapierVehicleWorld.FIXED_DT && subStepsRun < maxSubSteps) {
       this.stepSingleSubstep();
@@ -823,8 +839,9 @@ export class RapierVehicleWorld {
     const frame = closest.frame;
 
     const T = frame.tangent;
-    const U = frame.normal;
-    const N = frame.binormal;
+    const isNormalUp = Math.abs(frame.normal[1]) >= Math.abs(frame.binormal[1]);
+    const U = isNormalUp ? frame.normal : frame.binormal;
+    const N = isNormalUp ? frame.binormal : frame.normal;
     const S = frame.position;
 
     // Along-offset is strictly determined by the closest spline projection (never yanked backward)

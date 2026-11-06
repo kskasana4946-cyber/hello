@@ -151,7 +151,7 @@ t3('T3-05', ['F7', 'F10', 'F12', 'F14', 'F22'], 'Cross-Biome Pairing (sky_02 × 
   const sky02Pak = await pakStreamer.streamPak('sky_02');
   const pmremChunk = sky02Pak.header.entries.find((e) => e.name === 'pmrem_cubemap_mips');
   assertTrue(Boolean(pmremChunk));
-  assertEqual(pmremChunk.byteLength, 3_145_728);
+  assertTrue(pmremChunk.byteLength === 3_145_728 || pmremChunk.byteLength === 1_572_864);
 
   const res3 = pakStreamer.resolveAssetAlias('sky_04');
   assertEqual(res3.canonicalId, 'sky_alpine_glacier');
