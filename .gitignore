@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Production build output
+dist/
+
+# Modular binary .pak asset bundles (generated via tools/*.py, ~400 MB total footprint)
+*.pak
+assets/paks/**/*.pak
+
+# Teamwork agent metadata
+.agents/
+
+# System / IDE artifacts
+.DS_Store
+Thumbs.db
+*.log
