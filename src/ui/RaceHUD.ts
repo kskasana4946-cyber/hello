@@ -23,11 +23,26 @@ export class RaceHUD {
   private minimapCtx: CanvasRenderingContext2D | null = null;
 
   public currentTelemetry: LiveCockpitTelemetry | null = null;
+  public onReturnToPaddockCallback?: () => void;
+  public onCycleCameraCallback?: () => void;
+  private playerTrackFraction = 0.0;
+  private rivalTrackFractions: number[] = [];
 
   constructor(container?: HTMLElement | null) {
     if (container) {
       this.initialize(container);
     }
+  }
+
+  public setVisible(visible: boolean): void {
+    if (this.rootElement) {
+      this.rootElement.style.display = visible ? 'flex' : 'none';
+    }
+  }
+
+  public setMinimapPositions(playerFraction: number, rivalFractions: number[]): void {
+    this.playerTrackFraction = ((Number(playerFraction) || 0) % 1 + 1) % 1;
+    this.rivalTrackFractions = rivalFractions.map((f) => (((Number(f) || 0) % 1) + 1) % 1);
   }
 
   /**
@@ -56,29 +71,55 @@ export class RaceHUD {
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      padding: 24px 32px;
+      padding: 20px 28px;
       color: #f8fafc;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       user-select: none;
     `;
 
-    // 1. TOP BAR: Position Leaderboard & Lap Counter & Sector Splits
+    // 1. TOP BAR: Position Leaderboard, Broadcast Controls & Lap Counter
     const topBar = document.createElement('div');
     topBar.style.cssText = 'display: flex; justify-content: space-between; align-items: flex-start;';
 
     // Position & Leaderboard
     const posWrap = document.createElement('div');
     posWrap.innerHTML = `
-      <div style="background: rgba(15,23,42,0.85); border-left: 4px solid #00f0ff; border-radius: 4px; padding: 8px 16px; backdrop-filter: blur(8px);">
-        <div style="font-size: 11px; letter-spacing: 2px; color: #94a3b8; font-weight: 700;">POSITION</div>
+      <div style="background: rgba(2,6,23,0.85); border-left: 4px solid #00f0ff; border-radius: 6px; padding: 8px 18px; backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0,0,0,0.4);">
+        <div style="font-size: 10px; letter-spacing: 2px; color: #94a3b8; font-weight: 800;">RACE POSITION</div>
         <div id="hud-position" style="font-size: 32px; font-weight: 900; line-height: 1.1; color: #fff;">P1 <span style="font-size: 16px; color: #64748b;">/ 8</span></div>
       </div>
     `;
     topBar.appendChild(posWrap);
 
+    // Center Top Broadcast Bar: Controls & Quick Buttons
+    const centerControls = document.createElement('div');
+    centerControls.style.cssText = `
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(2,6,23,0.82);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 8px;
+      padding: 6px 14px;
+      backdrop-filter: blur(10px);
+    `;
+    centerControls.innerHTML = `
+      <button id="hud-btn-paddock" style="background: rgba(239,68,68,0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.45); border-radius: 4px; padding: 5px 10px; font-size: 11px; font-weight: 800; cursor: pointer;">
+        [ESC] PADDOCK GARAGE
+      </button>
+      <button id="hud-btn-camera" style="background: rgba(0,240,255,0.16); color: #00f0ff; border: 1px solid rgba(0,240,255,0.4); border-radius: 4px; padding: 5px 10px; font-size: 11px; font-weight: 800; cursor: pointer;">
+        [C] CAMERA VIEW
+      </button>
+      <span style="font-size: 11px; color: #94a3b8; font-weight: 600; padding-left: 4px;">
+        WASD / Arrows: Drive &bull; Space: Drift &bull; Shift: ERS Boost
+      </span>
+    `;
+    topBar.appendChild(centerControls);
+
     // Lap Timer, Lap Delta & Sector Splits
     const lapWrap = document.createElement('div');
-    lapWrap.style.cssText = 'text-align: right; background: rgba(15,23,42,0.85); border-right: 4px solid #a855f7; border-radius: 4px; padding: 8px 16px; backdrop-filter: blur(8px);';
+    lapWrap.style.cssText = 'text-align: right; background: rgba(2,6,23,0.85); border-right: 4px solid #a855f7; border-radius: 6px; padding: 8px 18px; backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0,0,0,0.4);';
     lapWrap.innerHTML = `
       <div id="hud-lap-counter" style="font-size: 12px; letter-spacing: 2px; color: #a855f7; font-weight: 800;">LAP 1 / 3</div>
       <div id="hud-lap-delta" style="font-size: 24px; font-weight: 900; font-family: monospace; color: #22c55e;">-0.00s</div>
@@ -94,13 +135,18 @@ export class RaceHUD {
     const bottomBar = document.createElement('div');
     bottomBar.style.cssText = 'display: flex; justify-content: space-between; align-items: flex-end;';
 
-    // Left: 2D Minimap
+    // Left: 2D GPS Circuit Spline Minimap
     const mapWrap = document.createElement('div');
-    mapWrap.style.cssText = 'background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 8px; backdrop-filter: blur(8px);';
+    mapWrap.style.cssText = 'background: rgba(2,6,23,0.85); border: 1px solid rgba(0,240,255,0.22); border-radius: 10px; padding: 10px; backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0,0,0,0.45);';
+    const mapLabel = document.createElement('div');
+    mapLabel.style.cssText = 'font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: #00f0ff; margin-bottom: 4px; display: flex; justify-content: space-between;';
+    mapLabel.innerHTML = '<span>CIRCUIT GPS</span><span style="color:#ef4444;">● AI</span>';
+    mapWrap.appendChild(mapLabel);
+
     this.minimapCanvas = document.createElement('canvas');
     this.minimapCanvas.width = 160;
     this.minimapCanvas.height = 160;
-    this.minimapCanvas.style.cssText = 'display: block; width: 140px; height: 140px; border-radius: 6px;';
+    this.minimapCanvas.style.cssText = 'display: block; width: 145px; height: 145px; border-radius: 6px;';
     this.minimapCtx = this.minimapCanvas.getContext('2d');
     mapWrap.appendChild(this.minimapCanvas);
     bottomBar.appendChild(mapWrap);
@@ -109,12 +155,15 @@ export class RaceHUD {
     const cluster = document.createElement('div');
     cluster.style.cssText = `
       position: relative;
-      width: 280px;
-      height: 200px;
+      width: 290px;
+      height: 205px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: flex-end;
+      background: radial-gradient(circle at 50% 65%, rgba(2,6,23,0.82) 0%, rgba(2,6,23,0) 78%);
+      padding: 8px 14px;
+      border-radius: 16px;
     `;
 
     // SVG Tachometer Arc
@@ -145,18 +194,18 @@ export class RaceHUD {
       <div id="hud-gear" style="font-size: 36px; font-weight: 900; color: #00f0ff; line-height: 1;">N</div>
       <div id="hud-speed" style="font-size: 52px; font-weight: 900; line-height: 0.95; font-variant-numeric: tabular-nums; color: #fff;">0</div>
       <div style="font-size: 11px; letter-spacing: 2px; color: #94a3b8; font-weight: 700;">KPH</div>
-      <div id="hud-rpm-text" style="font-size: 11px; font-family: monospace; color: #64748b; margin-top: 2px;">0 / 8,500 RPM</div>
+      <div id="hud-rpm-text" style="font-size: 11px; font-family: monospace; color: #cbd5e1; margin-top: 2px;">0 / 8,500 RPM</div>
     `;
     cluster.appendChild(speedCenter);
 
-    // Nitro Meter & DRS & Brake Glow Status Row
+    // Nitro / ERS Meter & DRS & Brake Glow Status Row
     const statusRow = document.createElement('div');
     statusRow.style.cssText = 'position: relative; z-index: 2; width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;';
     statusRow.innerHTML = `
-      <!-- Nitro Meter -->
+      <!-- ERS / Nitro Meter -->
       <div style="flex: 1;">
         <div style="display: flex; justify-content: space-between; font-size: 9px; font-weight: 800; color: #00f0ff; letter-spacing: 1px; margin-bottom: 2px;">
-          <span>NITRO</span> <span id="hud-nitro-val">100%</span>
+          <span>ERS BOOST</span> <span id="hud-nitro-val">100%</span>
         </div>
         <div style="width: 100%; height: 6px; background: #0f172a; border-radius: 3px; overflow: hidden; border: 1px solid rgba(0,240,255,0.3);">
           <div id="hud-nitro-bar" style="width: 100%; height: 100%; background: linear-gradient(90deg, #00f0ff, #3b82f6); border-radius: 3px;"></div>
@@ -177,6 +226,14 @@ export class RaceHUD {
     this.rootElement.appendChild(bottomBar);
 
     this.container.appendChild(this.rootElement);
+
+    // Bind button listeners
+    this.rootElement.querySelector('#hud-btn-paddock')?.addEventListener('click', () => {
+      if (this.onReturnToPaddockCallback) this.onReturnToPaddockCallback();
+    });
+    this.rootElement.querySelector('#hud-btn-camera')?.addEventListener('click', () => {
+      if (this.onCycleCameraCallback) this.onCycleCameraCallback();
+    });
 
     // Element caching
     this.positionElement = this.rootElement.querySelector('#hud-position');
@@ -287,7 +344,7 @@ export class RaceHUD {
     this.drawMinimap(telemetry);
   }
 
-  private drawMinimap(telemetry: LiveCockpitTelemetry): void {
+  private drawMinimap(_telemetry: LiveCockpitTelemetry): void {
     if (!this.minimapCtx || !this.minimapCanvas) return;
     const ctx = this.minimapCtx;
     const w = this.minimapCanvas.width;
@@ -296,27 +353,57 @@ export class RaceHUD {
     ctx.clearRect(0, 0, w, h);
 
     // Dark circuit backdrop
-    ctx.fillStyle = 'rgba(2, 6, 23, 0.8)';
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
     ctx.fillRect(0, 0, w, h);
 
-    // Draw stylized racetrack circuit loop
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 6;
-    ctx.lineCap = 'round';
+    const cx = w / 2;
+    const cy = h / 2;
+    const rx = w * 0.37;
+    const ry = h * 0.35;
+
+    // Draw outer track border
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+    ctx.lineWidth = 10;
     ctx.beginPath();
-    ctx.ellipse(w / 2, h / 2, w * 0.38, h * 0.32, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     ctx.stroke();
 
+    // Draw inner asphalt ribbon
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Start/Finish marker at theta = 0 (bottom-top reference)
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx + rx - 6, cy);
+    ctx.lineTo(cx + rx + 6, cy);
+    ctx.stroke();
+
+    // Draw AI rival positions
+    ctx.fillStyle = '#ef4444';
+    for (const rFrac of this.rivalTrackFractions) {
+      const rAngle = rFrac * Math.PI * 2;
+      const rpx = cx + Math.cos(rAngle) * rx;
+      const rpy = cy + Math.sin(rAngle) * ry;
+      ctx.beginPath();
+      ctx.arc(rpx, rpy, 3.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     // Draw player position marker
+    const pAngle = this.playerTrackFraction * Math.PI * 2;
+    const px = cx + Math.cos(pAngle) * rx;
+    const py = cy + Math.sin(pAngle) * ry;
+
     ctx.fillStyle = '#00f0ff';
     ctx.shadowColor = '#00f0ff';
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 10;
     ctx.beginPath();
-    // Angular position based on lap progress fraction
-    const angle = (Date.now() * 0.001) % (Math.PI * 2);
-    const px = w / 2 + Math.cos(angle) * (w * 0.38);
-    const py = h / 2 + Math.sin(angle) * (h * 0.32);
-    ctx.arc(px, py, 5, 0, Math.PI * 2);
+    ctx.arc(px, py, 5.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
   }

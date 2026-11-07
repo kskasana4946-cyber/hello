@@ -120,6 +120,8 @@ export class PaddockShowroomUI {
 
   public onLaunchRaceCallback?: (config: CircuitConfiguration, vehicleId: string) => void;
   public onVehicleSelectCallback?: (vehicleId: string) => void;
+  public onLiverySelectCallback?: (liveryIndex: number) => void;
+  public onCircuitConfigCallback?: (config: Partial<CircuitConfiguration>) => void;
   private tabContentElement: HTMLElement | null = null;
 
   constructor(
@@ -156,7 +158,7 @@ export class PaddockShowroomUI {
       z-index: 1000;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      justify-content: flex-start;
       color: #f8fafc;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       user-select: none;
@@ -166,6 +168,7 @@ export class PaddockShowroomUI {
     this.renderHeader();
     this.renderTabRibbon();
     this.renderDockedLaunchBar();
+    this.updateDomTabs();
 
     this.container.appendChild(this.rootElement);
 
@@ -239,10 +242,7 @@ export class PaddockShowroomUI {
         this.onVehicleSelectCallback(spec.id);
       } catch {}
     }
-    const summary = this.rootElement?.querySelector('#launch-bar-summary');
-    if (summary) {
-      summary.innerHTML = `Selected: <strong style="color: #00f0ff;">${this.selectedVehicleId}</strong> | ${this.selectedDistanceKm} KM | ${this.selectedFormat}`;
-    }
+    this.updateLaunchBarSummary();
     this.updateDomTabs();
     return this.getState();
   }
@@ -257,6 +257,12 @@ export class PaddockShowroomUI {
     } else {
       this.selectedLiveryIndex = Math.max(0, Math.min(11, Math.floor(raw)));
     }
+    if (this.onLiverySelectCallback) {
+      try {
+        this.onLiverySelectCallback(this.selectedLiveryIndex);
+      } catch {}
+    }
+    this.updateLaunchBarSummary();
     return this.getState();
   }
 
@@ -279,7 +285,23 @@ export class PaddockShowroomUI {
     if (config.aiDifficulty !== undefined) {
       this.selectedAiDifficulty = config.aiDifficulty;
     }
+    if (this.onCircuitConfigCallback) {
+      try {
+        this.onCircuitConfigCallback(config);
+      } catch {}
+    }
+    this.updateLaunchBarSummary();
     return this.getState();
+  }
+
+  private updateLaunchBarSummary(): void {
+    const summary = this.rootElement?.querySelector('#launch-bar-summary');
+    if (summary) {
+      const spec = getVehicleById(this.selectedVehicleId);
+      const carName = spec ? spec.name : this.selectedVehicleId;
+      const livery = PBR_LIVERY_PRESETS[this.selectedLiveryIndex] || PBR_LIVERY_PRESETS[0];
+      summary.innerHTML = `Car: <strong style="color: #00f0ff;">${carName}</strong> <span style="color:#94a3b8;">(${livery.name})</span> &bull; Circuit: <strong style="color:#f8fafc;">${this.selectedDistanceKm} KM</strong> &bull; Format: <strong style="color:#f8fafc;">${this.selectedFormat}</strong> &bull; <span style="color:#38bdf8;">🖱️ Drag 3D Showroom to Orbit</span>`;
+    }
   }
 
   /**
@@ -298,6 +320,7 @@ export class PaddockShowroomUI {
    */
   public toggleSandboxUnlockAll(forceState?: boolean): PaddockShowroomState {
     this.progression.toggleSandboxUnlockAll(forceState);
+    this.updateDomTabs();
     return this.getState();
   }
 
@@ -685,16 +708,16 @@ export class PaddockShowroomUI {
       this.tabContentElement.id = 'paddock-tab-content';
       this.tabContentElement.style.cssText = `
         pointer-events: auto;
-        margin: 12px 24px;
-        flex: 1;
-        max-height: 220px;
+        margin: auto 24px 6px 24px;
+        max-height: 152px;
         overflow-y: auto;
         overflow-x: hidden;
-        background: rgba(2,6,23,0.75);
-        backdrop-filter: blur(8px);
-        border: 1px solid rgba(255,255,255,0.1);
+        background: rgba(2,6,23,0.78);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(0,240,255,0.18);
         border-radius: 8px;
-        padding: 12px 16px;
+        padding: 10px 14px;
+        box-shadow: 0 -8px 28px rgba(0,0,0,0.45);
       `;
       // Insert before launch bar
       const launchBar = this.rootElement.querySelector('#docked-launch-bar');
@@ -716,18 +739,18 @@ export class PaddockShowroomUI {
       // TAB 1: GARAGE - Roster of 34 cars by Tier
       const unlockedIds = this.progression.getUnlockedVehicleIds();
       const wrap = document.createElement('div');
-      wrap.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;';
+      wrap.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(195px, 1fr)); gap: 8px;';
 
       for (const car of VEHICLE_ROSTER) {
         const isUnlocked = unlockedIds.includes(car.id);
         const isSelected = this.selectedVehicleId === car.id;
         const card = document.createElement('div');
         card.style.cssText = `
-          padding: 8px 12px;
+          padding: 7px 11px;
           border-radius: 6px;
           cursor: ${isUnlocked ? 'pointer' : 'not-allowed'};
-          background: ${isSelected ? 'rgba(0,240,255,0.2)' : isUnlocked ? 'rgba(15,23,42,0.8)' : 'rgba(15,23,42,0.4)'};
-          border: 1px solid ${isSelected ? '#00f0ff' : isUnlocked ? 'rgba(255,255,255,0.1)' : 'rgba(239,68,68,0.3)'};
+          background: ${isSelected ? 'rgba(0,240,255,0.22)' : isUnlocked ? 'rgba(15,23,42,0.85)' : 'rgba(15,23,42,0.45)'};
+          border: 1px solid ${isSelected ? '#00f0ff' : isUnlocked ? 'rgba(255,255,255,0.12)' : 'rgba(239,68,68,0.3)'};
           display: flex;
           flex-direction: column;
           gap: 2px;
@@ -736,9 +759,9 @@ export class PaddockShowroomUI {
         card.innerHTML = `
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-weight: 800; font-size: 12px; color: ${isSelected ? '#00f0ff' : '#f8fafc'};">${car.name}</span>
-            <span style="font-size: 10px; color: ${isUnlocked ? '#38bdf8' : '#ef4444'}; font-weight: 700;">${isUnlocked ? 'TIER ' + car.tier : '🔒 WINS: ' + car.unlockRequirementWins}</span>
+            <span style="font-size: 10px; color: ${isUnlocked ? '#38bdf8' : '#ef4444'}; font-weight: 700;">${isUnlocked ? 'TIER ' + car.tier : '🔒 WINS: ' + car.winsRequired}</span>
           </div>
-          <div style="font-size: 10px; color: #94a3b8;">Top Speed: <strong style="color: #f1f5f9;">${car.topSpeedKph} KPH</strong> | 0-100: <strong style="color: #f1f5f9;">${car.accelZeroToHundredSec}s</strong></div>
+          <div style="font-size: 10px; color: #94a3b8;">Top Speed: <strong style="color: #f1f5f9;">${car.topSpeedKph} KPH</strong> | 0-100: <strong style="color: #f1f5f9;">${car.zeroToHundredSec}s</strong></div>
         `;
         if (isUnlocked) {
           card.addEventListener('click', () => {
@@ -751,24 +774,28 @@ export class PaddockShowroomUI {
     } else if (this.activeTab === 2) {
       // TAB 2: LIVERIES
       const wrap = document.createElement('div');
-      wrap.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px;';
+      wrap.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 8px;';
       for (const livery of PBR_LIVERY_PRESETS) {
         const isSelected = this.selectedLiveryIndex === livery.index;
         const card = document.createElement('div');
         const colorHex = '#' + livery.primaryColor.toString(16).padStart(6, '0');
+        const accentHex = '#' + livery.accentColor.toString(16).padStart(6, '0');
         card.style.cssText = `
           padding: 8px 12px;
           border-radius: 6px;
           cursor: pointer;
-          background: ${isSelected ? 'rgba(0,240,255,0.2)' : 'rgba(15,23,42,0.8)'};
-          border: 1px solid ${isSelected ? '#00f0ff' : 'rgba(255,255,255,0.1)'};
+          background: ${isSelected ? 'rgba(0,240,255,0.22)' : 'rgba(15,23,42,0.85)'};
+          border: 1px solid ${isSelected ? '#00f0ff' : 'rgba(255,255,255,0.12)'};
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 10px;
         `;
         card.innerHTML = `
-          <div style="width: 20px; height: 20px; border-radius: 50%; background: ${colorHex}; border: 1px solid #fff;"></div>
-          <div style="font-size: 11px; font-weight: 700; color: #f8fafc;">${livery.name}</div>
+          <div style="width: 22px; height: 22px; border-radius: 50%; background: linear-gradient(135deg, ${colorHex} 60%, ${accentHex} 100%); border: 1px solid #fff; flex-shrink: 0;"></div>
+          <div>
+            <div style="font-size: 11px; font-weight: 700; color: ${isSelected ? '#00f0ff' : '#f8fafc'};">${livery.name}</div>
+            <div style="font-size: 9px; color: #94a3b8;">${livery.finishClass.replace(/_/g, ' ')}</div>
+          </div>
         `;
         card.addEventListener('click', () => {
           this.selectLivery(livery.index);
@@ -780,33 +807,52 @@ export class PaddockShowroomUI {
     } else if (this.activeTab === 3) {
       // TAB 3: CIRCUITS
       this.tabContentElement.innerHTML = `
-        <div style="display: flex; gap: 24px; font-size: 12px; flex-wrap: wrap;">
+        <div style="display: flex; gap: 20px; font-size: 12px; flex-wrap: wrap; align-items: center;">
           <div>
-            <div style="color: #94a3b8; font-weight: 700; margin-bottom: 6px;">TRACK BIOME:</div>
+            <div style="color: #94a3b8; font-weight: 700; margin-bottom: 5px;">TRACK BIOME:</div>
             <select id="paddock-track-select" style="background: #1e293b; color: #fff; padding: 6px 10px; border-radius: 4px; border: 1px solid #334155;">
-              <option value="track_golden_gp">Golden GP Circuit</option>
+              <option value="track_golden_gp">Golden GP Circuit (Coastal)</option>
               <option value="track_neotokyo">Neo-Tokyo Cyber Expressway</option>
               <option value="track_canyon">Redrock Canyon Sprint</option>
               <option value="track_alpine">Alpine Glacier Loop</option>
             </select>
           </div>
           <div>
-            <div style="color: #94a3b8; font-weight: 700; margin-bottom: 6px;">CIRCUIT LENGTH:</div>
+            <div style="color: #94a3b8; font-weight: 700; margin-bottom: 5px;">SKY ATMOSPHERE:</div>
+            <select id="paddock-sky-select" style="background: #1e293b; color: #fff; padding: 6px 10px; border-radius: 4px; border: 1px solid #334155;">
+              <option value="sky_golden_hour">Golden Hour Sunset</option>
+              <option value="sky_neotokyo_cyber">Neo-Tokyo Midnight</option>
+              <option value="sky_redrock_canyon">Redrock Desert Sun</option>
+              <option value="sky_alpine_glacier">Alpine Crisp Noon</option>
+            </select>
+          </div>
+          <div>
+            <div style="color: #94a3b8; font-weight: 700; margin-bottom: 5px;">CIRCUIT LENGTH:</div>
             <select id="paddock-dist-select" style="background: #1e293b; color: #fff; padding: 6px 10px; border-radius: 4px; border: 1px solid #334155;">
-              <option value="2.0">2.0 KM Sprint</option>
-              <option value="5.0" selected>5.0 KM Grand Prix</option>
-              <option value="8.0">8.0 KM Pro GT</option>
-              <option value="12.0">12.0 KM Endurance</option>
+              <option value="2.0">2.0 KM Stadium Sprint</option>
+              <option value="5.0">5.0 KM FIA Grand Prix</option>
+              <option value="8.0">8.0 KM Pro GT Loop</option>
+              <option value="12.0">12.0 KM Spa / Le Mans Endurance</option>
               <option value="24.0">24.0 KM Nordschleife Green Hell</option>
               <option value="50.0">50.0 KM Coast Highway</option>
             </select>
           </div>
           <div>
-            <div style="color: #94a3b8; font-weight: 700; margin-bottom: 6px;">AI DIFFICULTY:</div>
+            <div style="color: #94a3b8; font-weight: 700; margin-bottom: 5px;">RACE FORMAT:</div>
+            <select id="paddock-format-select" style="background: #1e293b; color: #fff; padding: 6px 10px; border-radius: 4px; border: 1px solid #334155;">
+              <option value="SPRINT_1_LAP">Sprint (1 Lap)</option>
+              <option value="GRAND_PRIX_3_LAPS">Grand Prix (3 Laps)</option>
+              <option value="ENDURANCE_5_LAPS">Endurance (5 Laps)</option>
+              <option value="TIME_ATTACK">Time Attack (Solo)</option>
+              <option value="ELIMINATION">Elimination Knockout</option>
+            </select>
+          </div>
+          <div>
+            <div style="color: #94a3b8; font-weight: 700; margin-bottom: 5px;">AI DIFFICULTY:</div>
             <select id="paddock-ai-select" style="background: #1e293b; color: #fff; padding: 6px 10px; border-radius: 4px; border: 1px solid #334155;">
               <option value="EASY">Easy (Rookie)</option>
               <option value="MEDIUM">Medium (Club)</option>
-              <option value="HARD" selected>Hard (Pro GP)</option>
+              <option value="HARD">Hard (Pro GP)</option>
               <option value="VERY_HARD">Very Hard (Master)</option>
               <option value="SUPER_HARD">Super Hard (Apex Legend)</option>
             </select>
@@ -814,19 +860,25 @@ export class PaddockShowroomUI {
         </div>
       `;
       const trackSel = this.tabContentElement.querySelector('#paddock-track-select') as HTMLSelectElement;
+      const skySel = this.tabContentElement.querySelector('#paddock-sky-select') as HTMLSelectElement;
       const distSel = this.tabContentElement.querySelector('#paddock-dist-select') as HTMLSelectElement;
+      const fmtSel = this.tabContentElement.querySelector('#paddock-format-select') as HTMLSelectElement;
       const aiSel = this.tabContentElement.querySelector('#paddock-ai-select') as HTMLSelectElement;
       if (trackSel) trackSel.value = this.selectedTrackId;
+      if (skySel) skySel.value = this.selectedSkyId;
       if (distSel) distSel.value = this.selectedDistanceKm.toString();
+      if (fmtSel) fmtSel.value = this.selectedFormat;
       if (aiSel) aiSel.value = this.selectedAiDifficulty;
 
       trackSel?.addEventListener('change', () => this.setCircuitConfig({ trackId: trackSel.value as any }));
+      skySel?.addEventListener('change', () => this.setCircuitConfig({ skyId: skySel.value as any }));
       distSel?.addEventListener('change', () => this.setCircuitConfig({ distanceKm: parseFloat(distSel.value) as any }));
+      fmtSel?.addEventListener('change', () => this.setCircuitConfig({ format: fmtSel.value as any }));
       aiSel?.addEventListener('change', () => this.setCircuitConfig({ aiDifficulty: aiSel.value as any }));
     } else if (this.activeTab === 4) {
       // TAB 4: MOD STUDIO
       this.tabContentElement.innerHTML = `
-        <div style="display: flex; gap: 20px; align-items: center;">
+        <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
           <button id="paddock-export-glb" style="background: #0284c7; color: #fff; font-weight: 800; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer;">
             💾 EXPORT CAR GLB 2.0
           </button>
@@ -834,7 +886,7 @@ export class PaddockShowroomUI {
         </div>
       `;
       this.tabContentElement.querySelector('#paddock-export-glb')?.addEventListener('click', () => {
-        const glb = this.exportCurrentVehicleGLB();
+        const glb = this.exportCurrentVehicleGlb();
         const blob = new Blob([glb.buffer as ArrayBuffer], { type: 'model/gltf-binary' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);

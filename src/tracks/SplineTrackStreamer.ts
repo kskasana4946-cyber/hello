@@ -524,22 +524,91 @@ export class SplineTrackStreamer implements ISplineProvider {
     });
   }
 
+  private cachedAsphaltTexture: THREE.Texture | null = null;
+
+  private getOrCreateAsphaltTexture(isStartSector: boolean): THREE.Texture | null {
+    if (!isStartSector && this.cachedAsphaltTexture) {
+      return this.cachedAsphaltTexture;
+    }
+    if (typeof document === 'undefined') {
+      return null;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Base dark motorsport tarmac
+    ctx.fillStyle = '#1e222a';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Fine aggregate asphalt grain
+    for (let i = 0; i < 3200; i++) {
+      const gx = (i * 73) % 512;
+      const gy = (i * 137) % 512;
+      const shade = 24 + (i % 22);
+      ctx.fillStyle = `rgb(${shade}, ${shade + 2}, ${shade + 6})`;
+      ctx.fillRect(gx, gy, 2, 2);
+    }
+
+    // Darkened rubbered-in racing line in center-left/right track groove
+    const rubberGrad = ctx.createLinearGradient(0, 0, 512, 0);
+    rubberGrad.addColorStop(0.0, 'rgba(0,0,0,0)');
+    rubberGrad.addColorStop(0.22, 'rgba(8,10,14,0.45)');
+    rubberGrad.addColorStop(0.5, 'rgba(10,12,16,0.25)');
+    rubberGrad.addColorStop(0.78, 'rgba(8,10,14,0.45)');
+    rubberGrad.addColorStop(1.0, 'rgba(0,0,0,0)');
+    ctx.fillStyle = rubberGrad;
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Crisp white track boundary lines
+    ctx.fillStyle = 'rgba(241, 245, 249, 0.85)';
+    ctx.fillRect(14, 0, 8, 512);
+    ctx.fillRect(490, 0, 8, 512);
+
+    // Subtle dashed center reference line
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
+    for (let y = 0; y < 512; y += 64) {
+      ctx.fillRect(253, y, 6, 28);
+    }
+
+    // Start/Finish checkerboard line on sector 0
+    if (isStartSector) {
+      const sq = 16;
+      for (let x = 22; x < 490; x += sq) {
+        for (let r = 0; r < 2; r++) {
+          ctx.fillStyle = ((x / sq + r) & 1) === 0 ? '#ffffff' : '#090d16';
+          ctx.fillRect(x, 24 + r * sq, sq, sq);
+        }
+      }
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    if (!isStartSector) {
+      this.cachedAsphaltTexture = tex;
+    }
+    return tex;
+  }
+
   /**
    * Constructs genuine 3D Three.js geometry for a 500m sector:
-   * Road ribbon with crown camber and banking, FIA kerbs, Armco barriers,
-   * wind-swayed botanical trees, grandstands, and illuminated tunnel structures.
+   * Continuous spline-hugging road ribbon with crown camber and banking,
+   * spline-hugging red/white FIA sawtooth kerbs, spline-hugging double-wave Armco barriers,
+   * biome terrain shoulders, wind-swayed botanical trees, grandstands, and illuminated tunnels.
    */
   public createSectorMeshGroup(sectorIndex: number): THREE.Group {
     const group = new THREE.Group();
     group.name = `Sector_${String(sectorIndex).padStart(3, '0')}`;
 
     const sStart = sectorIndex * 500;
-    const sEnd = (sectorIndex + 1) * 500;
     const sMid = sStart + 250;
     const frame = this.getFrameAtArcLength(sMid);
 
-    // 1. High-Density Road Ribbon Geometry (50 longitudinal steps x 32 cross-section vertices)
-    const longSegments = 20;
+    // 1. High-Density Road Ribbon Geometry (32 longitudinal steps x 16 cross-section segments)
+    const longSegments = 32;
     const crossSegments = 16;
     const roadWidth = this.roadWidth;
     const halfWidth = roadWidth / 2;
@@ -555,8 +624,8 @@ export class SplineTrackStreamer implements ISplineProvider {
       for (let j = 0; j <= crossSegments; j++) {
         const uLat = j / crossSegments; // 0.0 .. 1.0
         const lateralOffset = (uLat - 0.5) * roadWidth;
-        // Crown camber: convex slope peaking at centerline
-        const camber = -0.015 * Math.abs(lateralOffset);
+        // Crown camber + subtle banking tilt
+        const camber = -0.015 * Math.abs(lateralOffset) + Math.sin(f.bankAngleRad) * lateralOffset * 0.15;
 
         const vx = f.position[0] + f.normal[0] * lateralOffset;
         const vy = f.position[1] + camber;
@@ -564,7 +633,7 @@ export class SplineTrackStreamer implements ISplineProvider {
 
         posArray.push(vx, vy, vz);
         normalArray.push(0, 1, 0);
-        uvArray.push(uLat, (s - sStart) / 10.0);
+        uvArray.push(uLat, (s - sStart) / 25.0);
       }
     }
 
@@ -586,92 +655,261 @@ export class SplineTrackStreamer implements ISplineProvider {
     roadGeom.setAttribute('uv', new THREE.Float32BufferAttribute(uvArray, 2));
     roadGeom.setIndex(indexArray);
 
+    const asphaltMap = this.getOrCreateAsphaltTexture(sectorIndex === 0);
     const roadMat = new THREE.MeshStandardMaterial({
-      color: 0x222225,
+      color: asphaltMap ? 0xffffff : 0x22252e,
+      ...(asphaltMap ? { map: asphaltMap } : {}),
       roughness: this.biomeSpec.defaultRoughness,
-      metalness: 0.1,
+      metalness: 0.14,
     });
     const roadMesh = new THREE.Mesh(roadGeom, roadMat);
     roadMesh.name = 'RoadRibbon';
     group.add(roadMesh);
 
-    // 2. Extruded Sawtooth Kerbs & Armco Barriers at boundaries
-    const leftKerbGeom = new THREE.BoxGeometry(0.8, 0.15, 500);
-    const leftKerbMat = new THREE.MeshStandardMaterial({ color: 0xd90429, roughness: 0.5 });
-    const leftKerb = new THREE.Mesh(leftKerbGeom, leftKerbMat);
-    leftKerb.position.set(
-      frame.position[0] - frame.normal[0] * (halfWidth + 0.4),
-      frame.position[1] + 0.075,
-      frame.position[2] - frame.normal[2] * (halfWidth + 0.4)
-    );
-    leftKerb.name = 'FIAKerbLeft';
-    group.add(leftKerb);
+    // 2. Continuous Spline-Following FIA Sawtooth Kerbs (Alternating Red & White Blocks)
+    const buildSplineKerbMesh = (sideSign: -1 | 1, name: string): THREE.Mesh => {
+      const kPos: number[] = [];
+      const kNorm: number[] = [];
+      const kCol: number[] = [];
+      const kIdx: number[] = [];
+      const kerbWidth = 1.15;
+      const kerbHeight = 0.14;
 
-    const rightKerbGeom = new THREE.BoxGeometry(0.8, 0.15, 500);
-    const rightKerbMat = new THREE.MeshStandardMaterial({ color: 0xf8f9fa, roughness: 0.5 });
-    const rightKerb = new THREE.Mesh(rightKerbGeom, rightKerbMat);
-    rightKerb.position.set(
-      frame.position[0] + frame.normal[0] * (halfWidth + 0.4),
-      frame.position[1] + 0.075,
-      frame.position[2] + frame.normal[2] * (halfWidth + 0.4)
-    );
-    rightKerb.name = 'FIAKerbRight';
-    group.add(rightKerb);
+      for (let i = 0; i < longSegments; i++) {
+        const s0 = sStart + (i / longSegments) * 500;
+        const s1 = sStart + ((i + 1) / longSegments) * 500;
+        const f0 = this.getFrameAtArcLength(s0);
+        const f1 = this.getFrameAtArcLength(s1);
 
-    // Armco barriers (+0.85m elevation, double-wave corrugated steel)
-    const armcoGeom = new THREE.BoxGeometry(0.2, 0.85, 500);
-    const armcoMat = new THREE.MeshStandardMaterial({ color: 0xa0a5aa, metalness: 0.8, roughness: 0.3 });
-    const armcoLeft = new THREE.Mesh(armcoGeom, armcoMat);
-    armcoLeft.position.set(
-      frame.position[0] - frame.normal[0] * (halfWidth + 1.2),
-      frame.position[1] + 0.425,
-      frame.position[2] - frame.normal[2] * (halfWidth + 1.2)
-    );
-    armcoLeft.name = 'ArmcoBarrierLeft';
-    group.add(armcoLeft);
+        const latInner = sideSign * (halfWidth - 0.1);
+        const latOuter = sideSign * (halfWidth + kerbWidth);
 
-    const armcoRight = new THREE.Mesh(armcoGeom, armcoMat);
-    armcoRight.position.set(
-      frame.position[0] + frame.normal[0] * (halfWidth + 1.2),
-      frame.position[1] + 0.425,
-      frame.position[2] + frame.normal[2] * (halfWidth + 1.2)
-    );
-    armcoRight.name = 'ArmcoBarrierRight';
-    group.add(armcoRight);
+        const isRed = i % 2 === 0;
+        const r = isRed ? 0.88 : 0.96;
+        const g = isRed ? 0.06 : 0.97;
+        const b = isRed ? 0.15 : 0.98;
 
-    // 3. Illuminated Tunnel Mesh (if tunnel sector)
+        const baseVertex = (i * 4);
+        // 4 top/sloped vertices for this kerb segment
+        const p0In = [f0.position[0] + f0.normal[0] * latInner, f0.position[1] + 0.03, f0.position[2] + f0.normal[2] * latInner];
+        const p0Out = [f0.position[0] + f0.normal[0] * latOuter, f0.position[1] + kerbHeight, f0.position[2] + f0.normal[2] * latOuter];
+        const p1In = [f1.position[0] + f1.normal[0] * latInner, f1.position[1] + 0.03, f1.position[2] + f1.normal[2] * latInner];
+        const p1Out = [f1.position[0] + f1.normal[0] * latOuter, f1.position[1] + kerbHeight, f1.position[2] + f1.normal[2] * latOuter];
+
+        kPos.push(...p0In, ...p0Out, ...p1In, ...p1Out);
+        for (let v = 0; v < 4; v++) {
+          kNorm.push(0, 1, 0);
+          kCol.push(r, g, b);
+        }
+        kIdx.push(baseVertex, baseVertex + 2, baseVertex + 1);
+        kIdx.push(baseVertex + 1, baseVertex + 2, baseVertex + 3);
+      }
+
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(kPos, 3));
+      geom.setAttribute('normal', new THREE.Float32BufferAttribute(kNorm, 3));
+      geom.setAttribute('color', new THREE.Float32BufferAttribute(kCol, 3));
+      geom.setIndex(kIdx);
+
+      const mat = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.42,
+        metalness: 0.08,
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.name = name;
+      return mesh;
+    };
+
+    group.add(buildSplineKerbMesh(-1, 'FIAKerbLeft'));
+    group.add(buildSplineKerbMesh(1, 'FIAKerbRight'));
+
+    // 3. Continuous Spline-Following Corrugated Armco Steel Guardrails
+    const buildSplineArmcoMesh = (sideSign: -1 | 1, name: string): THREE.Mesh => {
+      const aPos: number[] = [];
+      const aNorm: number[] = [];
+      const aIdx: number[] = [];
+      const latBarrier = sideSign * (halfWidth + 1.45);
+      const barrierHeight = 0.92;
+
+      for (let i = 0; i <= longSegments; i++) {
+        const s = sStart + (i / longSegments) * 500;
+        const f = this.getFrameAtArcLength(s);
+        const bx = f.position[0] + f.normal[0] * latBarrier;
+        const by = f.position[1];
+        const bz = f.position[2] + f.normal[2] * latBarrier;
+
+        // Bottom & top rail vertices
+        aPos.push(bx, by + 0.12, bz);
+        aPos.push(bx, by + barrierHeight, bz);
+        aNorm.push(-sideSign * f.normal[0], 0.15, -sideSign * f.normal[2]);
+        aNorm.push(-sideSign * f.normal[0], 0.15, -sideSign * f.normal[2]);
+      }
+
+      for (let i = 0; i < longSegments; i++) {
+        const b0 = i * 2;
+        const t0 = b0 + 1;
+        const b1 = (i + 1) * 2;
+        const t1 = b1 + 1;
+        aIdx.push(b0, b1, t0);
+        aIdx.push(t0, b1, t1);
+      }
+
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(aPos, 3));
+      geom.setAttribute('normal', new THREE.Float32BufferAttribute(aNorm, 3));
+      geom.setIndex(aIdx);
+
+      const mat = new THREE.MeshStandardMaterial({
+        color: this.trackId === 'track_neotokyo' ? 0x38bdf8 : 0xb0b8c4,
+        metalness: 0.82,
+        roughness: 0.28,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.name = name;
+      return mesh;
+    };
+
+    group.add(buildSplineArmcoMesh(-1, 'ArmcoBarrierLeft'));
+    group.add(buildSplineArmcoMesh(1, 'ArmcoBarrierRight'));
+
+    // 4. Continuous Biome Terrain Shoulder Ribbon (Left & Right landscape verge)
+    const shoulderColor =
+      this.trackId === 'track_canyon'
+        ? 0x7c3a21
+        : this.trackId === 'track_alpine'
+        ? 0xdce8f2
+        : this.trackId === 'track_neotokyo'
+        ? 0x0f172a
+        : 0x244426;
+    const shoulderMat = new THREE.MeshStandardMaterial({
+      color: shoulderColor,
+      roughness: 0.88,
+      metalness: 0.05,
+      side: THREE.DoubleSide,
+    });
+
+    for (const sideSign of [-1, 1] as const) {
+      const sPos: number[] = [];
+      const sNorm: number[] = [];
+      const sIdx: number[] = [];
+      for (let i = 0; i <= longSegments; i++) {
+        const s = sStart + (i / longSegments) * 500;
+        const f = this.getFrameAtArcLength(s);
+        const innerLat = sideSign * (halfWidth + 1.15);
+        const outerLat = sideSign * (halfWidth + 46.0);
+        const outerBankY = this.trackId === 'track_canyon' || this.trackId === 'track_alpine' ? 4.2 : -0.6;
+
+        sPos.push(
+          f.position[0] + f.normal[0] * innerLat,
+          f.position[1] - 0.05,
+          f.position[2] + f.normal[2] * innerLat
+        );
+        sPos.push(
+          f.position[0] + f.normal[0] * outerLat,
+          f.position[1] + outerBankY,
+          f.position[2] + f.normal[2] * outerLat
+        );
+        sNorm.push(0, 1, 0, 0, 1, 0);
+      }
+      for (let i = 0; i < longSegments; i++) {
+        const a = i * 2;
+        const b = a + 1;
+        const c = (i + 1) * 2;
+        const d = c + 1;
+        sIdx.push(a, c, b);
+        sIdx.push(b, c, d);
+      }
+      const sGeom = new THREE.BufferGeometry();
+      sGeom.setAttribute('position', new THREE.Float32BufferAttribute(sPos, 3));
+      sGeom.setAttribute('normal', new THREE.Float32BufferAttribute(sNorm, 3));
+      sGeom.setIndex(sIdx);
+      const sMesh = new THREE.Mesh(sGeom, shoulderMat);
+      sMesh.name = sideSign < 0 ? 'BiomeShoulderLeft' : 'BiomeShoulderRight';
+      group.add(sMesh);
+    }
+
+    // 5. Illuminated Tunnel Mesh (if tunnel sector)
+    const yawMid = Math.atan2(frame.tangent[0], frame.tangent[2]);
     if (frame.isTunnel) {
-      const tunnelGeom = new THREE.CylinderGeometry(halfWidth + 2.0, halfWidth + 2.0, 500, 16, 1, true, 0, Math.PI);
-      const tunnelMat = new THREE.MeshStandardMaterial({ color: 0x1a1a20, roughness: 0.8, side: THREE.DoubleSide });
+      const tunnelGeom = new THREE.CylinderGeometry(halfWidth + 2.5, halfWidth + 2.5, 500, 18, 1, true, 0, Math.PI);
+      tunnelGeom.rotateX(Math.PI / 2);
+      const tunnelMat = new THREE.MeshStandardMaterial({
+        color: 0x161922,
+        roughness: 0.7,
+        metalness: 0.3,
+        side: THREE.DoubleSide,
+      });
       const tunnel = new THREE.Mesh(tunnelGeom, tunnelMat);
-      tunnel.position.set(frame.position[0], frame.position[1] + 6.0, frame.position[2]);
-      tunnel.rotation.z = Math.PI;
+      tunnel.position.set(frame.position[0], frame.position[1] + 0.5, frame.position[2]);
+      tunnel.rotation.y = yawMid;
       tunnel.name = 'IlluminatedTunnel';
       group.add(tunnel);
     }
 
-    // 4. Botanical Trees (instanced placement outside track boundaries)
-    const treeArchetype = this.biomeSpec.treeArchetype;
-    const treeTrunkGeom = new THREE.CylinderGeometry(0.4, 0.6, 6.0, 8);
-    const treeFoliageGeom = treeArchetype === 'saguaro'
-      ? new THREE.CylinderGeometry(0.5, 0.5, 8.0, 8)
-      : new THREE.ConeGeometry(3.5, 9.0, 8);
-    const treeMat = new THREE.MeshStandardMaterial({
-      color: treeArchetype === 'snow-spruce' ? 0xd0e8ec : treeArchetype === 'saguaro' ? 0x4a7c59 : 0x2d6a4f,
-      roughness: 0.7,
-    });
+    // 6. Overhead FIA Start/Sector Cantilever Gantry Bridge
+    if (sectorIndex === 0 || sectorIndex % 2 === 0) {
+      const gantryS = sStart + (sectorIndex === 0 ? 15 : 250);
+      const gf = this.getFrameAtArcLength(gantryS);
+      const gYaw = Math.atan2(gf.tangent[0], gf.tangent[2]);
+      const gantryGroup = new THREE.Group();
+      gantryGroup.name = 'CantileverGantry';
+      gantryGroup.position.set(gf.position[0], gf.position[1], gf.position[2]);
+      gantryGroup.rotation.y = gYaw;
 
-    for (let k = 0; k < 6; k++) {
+      const pillarMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.25 });
+      const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(0.6, 8.2, 0.6), pillarMat);
+      leftPillar.position.set(-halfWidth - 1.8, 4.1, 0);
+      const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(0.6, 8.2, 0.6), pillarMat);
+      rightPillar.position.set(halfWidth + 1.8, 4.1, 0);
+      const crossBeam = new THREE.Mesh(new THREE.BoxGeometry(roadWidth + 4.4, 1.1, 0.9), pillarMat);
+      crossBeam.position.set(0, 7.8, 0);
+
+      const bannerColor = sectorIndex === 0 ? 0x22c55e : 0x00f0ff;
+      const lightStrip = new THREE.Mesh(
+        new THREE.BoxGeometry(roadWidth - 2.0, 0.35, 1.02),
+        new THREE.MeshStandardMaterial({
+          color: bannerColor,
+          emissive: bannerColor,
+          emissiveIntensity: 2.2,
+        })
+      );
+      lightStrip.position.set(0, 7.8, 0);
+
+      gantryGroup.add(leftPillar, rightPillar, crossBeam, lightStrip);
+      group.add(gantryGroup);
+    }
+
+    // 7. Botanical Trees & Biome Megastructures (outside track boundaries)
+    const treeArchetype = this.biomeSpec.treeArchetype;
+    const treeTrunkGeom = new THREE.CylinderGeometry(0.35, 0.55, 5.5, 8);
+    const treeFoliageGeom =
+      treeArchetype === 'saguaro'
+        ? new THREE.CylinderGeometry(0.55, 0.65, 8.5, 8)
+        : new THREE.ConeGeometry(3.8, 9.5, 8);
+    const treeMat = new THREE.MeshStandardMaterial({
+      color:
+        treeArchetype === 'snow-spruce'
+          ? 0xd8eef5
+          : treeArchetype === 'saguaro'
+          ? 0x4d7c4f
+          : 0x235c3b,
+      roughness: 0.72,
+    });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3222, roughness: 0.85 });
+
+    for (let k = 0; k < 10; k++) {
       const side = k % 2 === 0 ? 1 : -1;
-      const treeOffset = side * (halfWidth + 8.0 + (k * 2.5));
-      const treeS = sStart + (k / 5) * 450 + 25;
+      const treeOffset = side * (halfWidth + 7.5 + (k % 4) * 4.2);
+      const treeS = sStart + (k / 10) * 460 + 20;
       const treeFrame = this.getFrameAtArcLength(treeS);
 
       const treeGroup = new THREE.Group();
-      const trunk = new THREE.Mesh(treeTrunkGeom, new THREE.MeshStandardMaterial({ color: 0x5a3e2b }));
-      trunk.position.y = 3.0;
+      const trunk = new THREE.Mesh(treeTrunkGeom, trunkMat);
+      trunk.position.y = 2.75;
       const foliage = new THREE.Mesh(treeFoliageGeom, treeMat);
-      foliage.position.y = 8.5;
+      foliage.position.y = 8.2;
       treeGroup.add(trunk, foliage);
 
       treeGroup.position.set(
@@ -681,19 +919,72 @@ export class SplineTrackStreamer implements ISplineProvider {
       );
       treeGroup.name = `Tree_${treeArchetype}_${k}`;
       group.add(treeGroup);
+
+      // Biome-specific mega-scenery every 3rd placement
+      if (k % 3 === 0) {
+        const landmarkDist = side * (halfWidth + 26.0 + (k % 2) * 8.0);
+        if (this.trackId === 'track_neotokyo') {
+          const towerH = 28 + (k % 4) * 14;
+          const tower = new THREE.Mesh(
+            new THREE.BoxGeometry(10, towerH, 10),
+            new THREE.MeshStandardMaterial({
+              color: 0x0f172a,
+              emissive: k % 2 === 0 ? 0x06b6d4 : 0xd946ef,
+              emissiveIntensity: 0.35,
+              metalness: 0.7,
+              roughness: 0.2,
+            })
+          );
+          tower.position.set(
+            treeFrame.position[0] + treeFrame.normal[0] * landmarkDist,
+            treeFrame.position[1] + towerH * 0.5,
+            treeFrame.position[2] + treeFrame.normal[2] * landmarkDist
+          );
+          group.add(tower);
+        } else if (this.trackId === 'track_canyon' || this.trackId === 'track_alpine') {
+          const peakH = 22 + (k % 3) * 12;
+          const peak = new THREE.Mesh(
+            new THREE.ConeGeometry(14, peakH, 6),
+            new THREE.MeshStandardMaterial({
+              color: this.trackId === 'track_canyon' ? 0x9a4424 : 0xcbd5e1,
+              roughness: 0.85,
+            })
+          );
+          peak.position.set(
+            treeFrame.position[0] + treeFrame.normal[0] * landmarkDist,
+            treeFrame.position[1] + peakH * 0.45,
+            treeFrame.position[2] + treeFrame.normal[2] * landmarkDist
+          );
+          group.add(peak);
+        }
+      }
     }
 
-    // 5. Grandstands / Pit Buildings
+    // 8. Spline-Aligned Multi-Tier Grandstands & Pit Buildings
     if (sectorIndex % 3 === 0) {
-      const grandstandGeom = new THREE.BoxGeometry(12.0, 8.0, 100.0);
-      const grandstandMat = new THREE.MeshStandardMaterial({ color: 0x3d405b, roughness: 0.6 });
+      const grandstandGeom = new THREE.BoxGeometry(11.0, 8.5, 90.0);
+      const grandstandMat = new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        metalness: 0.35,
+        roughness: 0.55,
+      });
       const grandstand = new THREE.Mesh(grandstandGeom, grandstandMat);
       grandstand.position.set(
-        frame.position[0] + frame.normal[0] * 18.0,
-        frame.position[1] + 4.0,
-        frame.position[2] + frame.normal[2] * 18.0
+        frame.position[0] + frame.normal[0] * (halfWidth + 10.5),
+        frame.position[1] + 4.25,
+        frame.position[2] + frame.normal[2] * (halfWidth + 10.5)
       );
+      grandstand.rotation.y = yawMid;
       grandstand.name = 'MultiTierGrandstand';
+
+      // Stadium roof canopy over grandstand
+      const canopy = new THREE.Mesh(
+        new THREE.BoxGeometry(13.5, 0.45, 92.0),
+        new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 })
+      );
+      canopy.position.set(-1.2, 4.6, 0);
+      grandstand.add(canopy);
+
       group.add(grandstand);
     }
 

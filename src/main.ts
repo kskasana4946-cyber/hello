@@ -33,6 +33,8 @@ import {
   buildVehicle,
   updateVehicle,
   setLivery,
+  steerWheels,
+  spinWheels,
   VehicleModelInstance,
 } from './vehicles/HighPolyVehicleBuilder';
 import { ProgressionManager } from './career/ProgressionManager';
@@ -347,6 +349,7 @@ export function initApexGame(): any {
   };
 
   // 3. UI Screens
+  let isSyncingPaddock = false;
   const bootLoadingScreen = new BootLoadingScreen(container, () => {
     controller.completeBoot();
   });
@@ -355,32 +358,263 @@ export function initApexGame(): any {
     controller.launchRace();
   };
   paddockUI.onVehicleSelectCallback = (vehId: string) => {
-    controller.selectVehicle(vehId);
+    if (!isSyncingPaddock) {
+      controller.selectVehicle(vehId);
+    }
   };
-  const postRaceCeremony = new PostRaceRewardCeremony(container, null);
-  const raceHUD = new RaceHUD(container);
+  paddockUI.onLiverySelectCallback = (liveryIdx: number) => {
+    if (!isSyncingPaddock) {
+      controller.selectLivery(liveryIdx);
+    }
+  };
+  paddockUI.onCircuitConfigCallback = (cfg: any) => {
+    if (!isSyncingPaddock) {
+      controller.setCircuitConfig(cfg);
+    }
+  };
 
-  // 4. Three.js Scene Setup for 3D Visual Rendering
+  const postRaceCeremony = new PostRaceRewardCeremony(container, null);
+  (postRaceCeremony as any).onReturnToPaddockCallback = () => {
+    controller.returnToPaddock();
+  };
+  const raceHUD = new RaceHUD(container);
+  // Hide RaceHUD during BOOT and PADDOCK so it never overlaps the Paddock Showroom
+  raceHUD.setVisible(false);
+  raceHUD.onReturnToPaddockCallback = () => {
+    controller.returnToPaddock();
+  };
+  raceHUD.onCycleCameraCallback = () => {
+    controller.cycleCameraMode();
+  };
+
+  // 4. Three.js Scene Setup, 3-Point Studio Lighting & Showroom Stage
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x020617);
+  scene.background = new THREE.Color(0x060a14);
   const camera = new THREE.PerspectiveCamera(
-    75,
+    72,
     (typeof window !== 'undefined' ? window.innerWidth : 1280) /
       (typeof window !== 'undefined' ? window.innerHeight : 720),
     0.1,
-    2000
+    3000
   );
+
+  // High-Dynamic-Range 3-Point Lighting Rig + Ambient Hemisphere Fill
+  const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 1.45);
+  scene.add(hemiLight);
+
+  const keyLight = new THREE.DirectionalLight(0xfff7ed, 2.9);
+  keyLight.position.set(16, 26, 20);
+  scene.add(keyLight);
+
+  const fillLight = new THREE.DirectionalLight(0x38bdf8, 1.35);
+  fillLight.position.set(-20, 14, -16);
+  scene.add(fillLight);
+
+  const rimLight = new THREE.DirectionalLight(0xf8fafc, 1.65);
+  rimLight.position.set(0, 14, -24);
+  scene.add(rimLight);
+
+  // 3D Luxury Showroom Studio Environment (Turntable, Reflective Floor, Overhead Softboxes)
+  const showroomGroup = new THREE.Group();
+  showroomGroup.name = 'ShowroomStudioEnvironment';
+
+  const studioFloor = new THREE.Mesh(
+    new THREE.CylinderGeometry(32, 32, 0.2, 64),
+    new THREE.MeshStandardMaterial({
+      color: 0x0b111e,
+      metalness: 0.72,
+      roughness: 0.2,
+    })
+  );
+  studioFloor.position.y = -0.12;
+  showroomGroup.add(studioFloor);
+
+  const turntablePlinth = new THREE.Mesh(
+    new THREE.CylinderGeometry(3.35, 3.55, 0.08, 64),
+    new THREE.MeshStandardMaterial({
+      color: 0x161f33,
+      metalness: 0.85,
+      roughness: 0.16,
+    })
+  );
+  turntablePlinth.position.y = -0.03;
+  showroomGroup.add(turntablePlinth);
+
+  const turntableCyanRing = new THREE.Mesh(
+    new THREE.TorusGeometry(3.46, 0.035, 16, 96),
+    new THREE.MeshStandardMaterial({
+      color: 0x00f0ff,
+      emissive: 0x00f0ff,
+      emissiveIntensity: 2.6,
+      roughness: 0.1,
+    })
+  );
+  turntableCyanRing.rotation.x = Math.PI / 2;
+  turntableCyanRing.position.y = 0.01;
+  showroomGroup.add(turntableCyanRing);
+
+  const turntableInnerRing = new THREE.Mesh(
+    new THREE.TorusGeometry(2.55, 0.02, 12, 72),
+    new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 1.8,
+    })
+  );
+  turntableInnerRing.rotation.x = Math.PI / 2;
+  turntableInnerRing.position.y = 0.015;
+  showroomGroup.add(turntableInnerRing);
+
+  // Overhead Softbox Light Strips
+  const softboxMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: 0xf8fafc,
+    emissiveIntensity: 3.2,
+  });
+  for (const sbX of [-2.4, 0.0, 2.4]) {
+    const softbox = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.06, 6.2), softboxMat);
+    softbox.position.set(sbX, 4.4, 0);
+    showroomGroup.add(softbox);
+  }
+
+  // Architectural Studio Columns with Vertical Accent Light Bars
+  const pillarMat = new THREE.MeshStandardMaterial({
+    color: 0x111827,
+    metalness: 0.65,
+    roughness: 0.3,
+  });
+  const accentStripMat = new THREE.MeshStandardMaterial({
+    color: 0x00f0ff,
+    emissive: 0x0284c7,
+    emissiveIntensity: 1.8,
+  });
+  for (let pIdx = 0; pIdx < 8; pIdx++) {
+    const pAngle = (pIdx / 8) * Math.PI * 2;
+    const pRadius = 11.5;
+    const px = Math.cos(pAngle) * pRadius;
+    const pz = Math.sin(pAngle) * pRadius;
+    const col = new THREE.Mesh(new THREE.BoxGeometry(0.7, 6.5, 0.7), pillarMat);
+    col.position.set(px, 3.1, pz);
+    col.lookAt(0, 3.1, 0);
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 5.8, 0.74), accentStripMat);
+    col.add(strip);
+    showroomGroup.add(col);
+  }
+  scene.add(showroomGroup);
 
   const skyAtmosphere = new SkyAtmosphereSystem({ pakStreamer });
   skyAtmosphere.initialize(scene, renderer);
 
-  // Vehicle visual instances
+  // Attach Track Streamer & Tactical Ramps to Scene (hidden while in Showroom)
+  splineStreamer.attachToScene(scene);
+  tacticalRamps.attachToScene(scene);
+  (splineStreamer as any).sceneRoot.visible = false;
+  (tacticalRamps as any).sceneRoot.visible = false;
+
+  // Player & AI Rival 3D Vehicle Visual Instances
   let currentVehicleModel: VehicleModelInstance | null = null;
+  const aiRivalModels: VehicleModelInstance[] = [];
+
   if (typeof document !== 'undefined') {
     try {
       currentVehicleModel = buildVehicle(initialSpec, 0);
       scene.add(currentVehicleModel.rootGroup);
     } catch {}
+  }
+
+  // Realistic Motorsport VFX Particle Pool (Tire Smoke & Barrier Sparks)
+  interface MotorsportParticle {
+    mesh: THREE.Mesh;
+    velocity: THREE.Vector3;
+    life: number;
+    maxLife: number;
+    kind: 'smoke' | 'spark';
+  }
+  const vfxGroup = new THREE.Group();
+  vfxGroup.name = 'RealisticMotorsportVFX';
+  scene.add(vfxGroup);
+  const activeParticles: MotorsportParticle[] = [];
+
+  const smokeGeom = new THREE.SphereGeometry(0.22, 8, 8);
+  const sparkGeom = new THREE.BoxGeometry(0.05, 0.05, 0.35);
+
+  function spawnMotorsportParticle(
+    origin: THREE.Vector3,
+    vel: THREE.Vector3,
+    kind: 'smoke' | 'spark'
+  ) {
+    if (typeof document === 'undefined' || activeParticles.length > 75) return;
+    const mat =
+      kind === 'smoke'
+        ? new THREE.MeshStandardMaterial({
+            color: 0xd1d5db,
+            transparent: true,
+            opacity: 0.42,
+            roughness: 0.9,
+            depthWrite: false,
+          })
+        : new THREE.MeshStandardMaterial({
+            color: 0xffa500,
+            emissive: 0xff5500,
+            emissiveIntensity: 3.5,
+            transparent: true,
+            opacity: 0.95,
+          });
+    const mesh = new THREE.Mesh(kind === 'smoke' ? smokeGeom : sparkGeom, mat);
+    mesh.position.copy(origin);
+    vfxGroup.add(mesh);
+    activeParticles.push({
+      mesh,
+      velocity: vel.clone(),
+      life: 0,
+      maxLife: kind === 'smoke' ? 0.55 : 0.28,
+      kind,
+    });
+  }
+
+  function updateMotorsportParticles(dt: number) {
+    for (let i = activeParticles.length - 1; i >= 0; i--) {
+      const p = activeParticles[i];
+      p.life += dt;
+      if (p.life >= p.maxLife) {
+        vfxGroup.remove(p.mesh);
+        (p.mesh.material as THREE.Material).dispose();
+        activeParticles.splice(i, 1);
+        continue;
+      }
+      p.mesh.position.addScaledVector(p.velocity, dt);
+      const frac = p.life / p.maxLife;
+      const mat = p.mesh.material as THREE.MeshStandardMaterial;
+      if (p.kind === 'smoke') {
+        p.velocity.y += 1.2 * dt;
+        const s = 1.0 + frac * 2.4;
+        p.mesh.scale.set(s, s, s);
+        mat.opacity = 0.42 * (1.0 - frac);
+      } else {
+        p.velocity.y -= 9.8 * dt;
+        mat.opacity = 1.0 - frac;
+      }
+    }
+  }
+
+  function rebuildAiRivalModels() {
+    for (const m of aiRivalModels) {
+      scene.remove(m.rootGroup);
+    }
+    aiRivalModels.length = 0;
+    if (typeof document === 'undefined') return;
+
+    for (let i = 0; i < aiDirector.racers.length; i++) {
+      const rival = aiDirector.racers[i];
+      const spec =
+        getVehicleById((rival as any).vehicleId) ||
+        VEHICLE_ROSTER[(i + 4) % VEHICLE_ROSTER.length];
+      try {
+        const model = buildVehicle(spec, (i + 1) % 12);
+        scene.add(model.rootGroup);
+        aiRivalModels.push(model);
+      } catch {}
+    }
   }
 
   // 5. Game Lifecycle State
@@ -404,10 +638,18 @@ export function initApexGame(): any {
     suspensionStiffness: 1.0,
   };
 
+  // Interactive Showroom Orbit Camera State
+  let showroomOrbitYaw = 0.55;
+  let showroomOrbitPitch = 0.28;
+  let showroomOrbitDistance = 5.2;
+  let isDraggingShowroom = false;
+  let lastPointerX = 0;
+  let lastPointerY = 0;
+
   let activeExterior = vehicleBuilder.buildExterior(selectedVehicleId, selectedLiveryIndex);
   let activeCockpit = vehicleBuilder.buildCockpitAndGlass(selectedVehicleId);
 
-  // 6. User Input State
+  // 6. User Input State (Keyboard & Showroom Mouse Orbit)
   const keysDown = new Set<string>();
   if (typeof window !== 'undefined') {
     window.addEventListener('keydown', (e) => {
@@ -417,9 +659,11 @@ export function initApexGame(): any {
       synthEngine.resumeAudio();
 
       // Keyboard navigation
-      if (e.code === 'KeyQ') {
+      if (e.code === 'Escape' && phase === 'RACING') {
+        controller.returnToPaddock();
+      } else if (e.code === 'KeyQ' && phase === 'PADDOCK') {
         controller.pressTabKey('KeyQ');
-      } else if (e.code === 'KeyE') {
+      } else if (e.code === 'KeyE' && phase === 'PADDOCK') {
         controller.pressTabKey('KeyE');
       } else if (e.code === 'KeyC') {
         controller.cycleCameraMode();
@@ -438,6 +682,38 @@ export function initApexGame(): any {
 
     window.addEventListener('keyup', (e) => {
       keysDown.delete(e.code);
+    });
+
+    // Mouse-drag orbit & scroll-wheel zoom for Showroom 3D camera
+    window.addEventListener('pointerdown', (e) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'BUTTON' || target.tagName === 'SELECT' || target.closest('#paddock-tab-content') || target.closest('#docked-launch-bar') || target.closest('header') || target.closest('nav'))) {
+        return;
+      }
+      isDraggingShowroom = true;
+      lastPointerX = e.clientX;
+      lastPointerY = e.clientY;
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      if (!isDraggingShowroom || phase !== 'PADDOCK') return;
+      const dx = e.clientX - lastPointerX;
+      const dy = e.clientY - lastPointerY;
+      lastPointerX = e.clientX;
+      lastPointerY = e.clientY;
+      showroomOrbitYaw -= dx * 0.008;
+      showroomOrbitPitch = Math.max(0.08, Math.min(0.85, showroomOrbitPitch + dy * 0.006));
+    });
+
+    window.addEventListener('pointerup', () => {
+      isDraggingShowroom = false;
+    });
+
+    window.addEventListener('wheel', (e) => {
+      if (phase !== 'PADDOCK') return;
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('#paddock-tab-content')) return;
+      showroomOrbitDistance = Math.max(3.4, Math.min(8.5, showroomOrbitDistance + e.deltaY * 0.003));
     });
 
     window.addEventListener('resize', () => {
@@ -492,6 +768,10 @@ export function initApexGame(): any {
       activeTab = 1;
       cameraMode = 'SHOWROOM';
       renderer.setCameraMode('SHOWROOM');
+      raceHUD.setVisible(false);
+      showroomGroup.visible = true;
+      (splineStreamer as any).sceneRoot.visible = false;
+      (tacticalRamps as any).sceneRoot.visible = false;
       return this.getState();
     },
 
@@ -532,7 +812,12 @@ export function initApexGame(): any {
       }
 
       selectedVehicleId = spec.id;
-      paddockUI.selectVehicle(spec.id);
+      isSyncingPaddock = true;
+      try {
+        paddockUI.selectVehicle(spec.id);
+      } finally {
+        isSyncingPaddock = false;
+      }
       (physicsWorld as any).setVehicleSpec(spec);
       activeExterior = vehicleBuilder.buildExterior(spec, selectedLiveryIndex);
       activeCockpit = vehicleBuilder.buildCockpitAndGlass(spec);
@@ -558,7 +843,12 @@ export function initApexGame(): any {
       } else {
         selectedLiveryIndex = Math.max(0, Math.min(11, Math.floor(raw)));
       }
-      paddockUI.selectLivery(selectedLiveryIndex);
+      isSyncingPaddock = true;
+      try {
+        paddockUI.selectLivery(selectedLiveryIndex);
+      } finally {
+        isSyncingPaddock = false;
+      }
       activeExterior = vehicleBuilder.buildExterior(selectedVehicleId, selectedLiveryIndex);
       if (currentVehicleModel) {
         setLivery(currentVehicleModel, selectedLiveryIndex);
@@ -580,6 +870,7 @@ export function initApexGame(): any {
           const resolved = (pakStreamer as any).resolveAssetAlias(config.skyId);
           if (resolved.category === 'sky') {
             selectedSkyId = resolved.canonicalId as SkyBiomeId;
+            if (typeof window !== 'undefined') { skyAtmosphere.loadSky(selectedSkyId).catch(() => {}); }
           }
         } catch {}
       }
@@ -603,13 +894,18 @@ export function initApexGame(): any {
         selectedAiDifficulty = config.aiDifficulty as AIDifficultyTier;
       }
       aiDirector.configure(selectedAiDifficulty, selectedFormat);
-      paddockUI.setCircuitConfig({
-        trackId: selectedTrackId,
-        skyId: selectedSkyId,
-        distanceKm: selectedDistanceKm,
-        format: selectedFormat,
-        aiDifficulty: selectedAiDifficulty,
-      });
+      isSyncingPaddock = true;
+      try {
+        paddockUI.setCircuitConfig({
+          trackId: selectedTrackId,
+          skyId: selectedSkyId,
+          distanceKm: selectedDistanceKm,
+          format: selectedFormat,
+          aiDifficulty: selectedAiDifficulty,
+        });
+      } finally {
+        isSyncingPaddock = false;
+      }
       return this.getState();
     },
 
@@ -622,10 +918,25 @@ export function initApexGame(): any {
     launchRace() {
       splineStreamer.configure(selectedDistanceKm, selectedTrackId);
       tacticalRamps.rebuildRamps();
+      if (typeof window !== 'undefined') { skyAtmosphere.loadSky(selectedSkyId).catch(() => {}); }
       (physicsWorld as any).setVehicleSpec(selectedVehicleId);
       (physicsWorld as any).resetVehicleState();
       aiDirector.configure(selectedAiDifficulty, selectedFormat);
+
+      // Stream initial lookahead window of 3D track sectors around starting line
+      splineStreamer.streamLookaheadWindow(0, splineStreamer.getTotalLength(), 2, 6);
+      showroomGroup.visible = false;
+      (splineStreamer as any).sceneRoot.visible = true;
+      (tacticalRamps as any).sceneRoot.visible = true;
+
+      // Spawn 3D AI Rival cars on the grid
+      rebuildAiRivalModels();
+
+      // Step physics once (dt=0.001) so pState.position / forward / up match s=0 on track
+      physicsWorld.step(0.001);
+
       phase = 'RACING';
+      raceHUD.setVisible(true);
       if (typeof document !== 'undefined') {
         const paddockEl = document.getElementById('apex-paddock-showroom-ui');
         if (paddockEl) paddockEl.style.display = 'none';
@@ -674,6 +985,7 @@ export function initApexGame(): any {
       });
 
       phase = 'POST_RACE';
+      raceHUD.setVisible(false);
       postRaceCeremony.showCeremony(report);
       return this.getState();
     },
@@ -682,6 +994,28 @@ export function initApexGame(): any {
       phase = 'PADDOCK';
       cameraMode = 'SHOWROOM';
       renderer.setCameraMode('SHOWROOM');
+      raceHUD.setVisible(false);
+      showroomGroup.visible = true;
+      (splineStreamer as any).sceneRoot.visible = false;
+      (tacticalRamps as any).sceneRoot.visible = false;
+
+      // Remove AI rival meshes when returning to Showroom
+      for (const m of aiRivalModels) {
+        scene.remove(m.rootGroup);
+      }
+      aiRivalModels.length = 0;
+
+      // Reset player vehicle back onto Showroom Turntable center
+      if (currentVehicleModel) {
+        currentVehicleModel.rootGroup.position.set(0, 0, 0);
+        currentVehicleModel.rootGroup.rotation.set(0, 0, 0);
+        steerWheels(currentVehicleModel, 0);
+      }
+
+      if (typeof document !== 'undefined') {
+        const paddockEl = document.getElementById('apex-paddock-showroom-ui');
+        if (paddockEl) paddockEl.style.display = 'flex';
+      }
       return this.getState();
     },
 
@@ -700,6 +1034,20 @@ export function initApexGame(): any {
       const prog = progression.getState();
       const spec = getVehicleById(selectedVehicleId) || VEHICLE_ROSTER[0];
 
+      // Compute dynamic race position against AI rivals
+      const trackLen = splineStreamer.getTotalLength() || 5000;
+      const playerTotalDist =
+        ((aiDirector.currentLap - 1) * trackLen) + (pState?.alongOffset ?? 0);
+      let rank = 1;
+      if (phase === 'RACING' && aiDirector.racers.length > 0) {
+        for (const r of aiDirector.racers) {
+          const rDist = ((r.currentLap - 1) * trackLen) + r.alongOffset;
+          if (rDist > playerTotalDist + 2.0) {
+            rank++;
+          }
+        }
+      }
+
       const telemetry: LiveCockpitTelemetry = {
         speedKph: Math.round((pState?.speedKph ?? 0) * 10) / 10,
         rpm: pState?.rpm ?? 1000,
@@ -708,7 +1056,7 @@ export function initApexGame(): any {
         lapDeltaSec: aiDirector.bestLapTimeSec !== null ? -0.42 : 0.0,
         currentLap: aiDirector.currentLap,
         totalLaps: aiDirector.totalLaps,
-        position: 1,
+        position: rank,
         totalRacers: aiDirector.totalRacers,
         nitroPercent: pState?.nitroPercent ?? 100,
         drsActive: pState?.drsActive ?? false,
@@ -758,6 +1106,17 @@ export function initApexGame(): any {
     (window as any).__APEX_GAME__ = controller;
   }
 
+  // Helper to update shader camera uniform on vehicle materials
+  function syncVehicleShaderUniforms(model: VehicleModelInstance | null, cam: THREE.Camera) {
+    if (!model) return;
+    for (const mat of model.bodyMaterials) {
+      const sMat = mat as THREE.ShaderMaterial;
+      if (sMat.uniforms && sMat.uniforms.uCameraPosition) {
+        sMat.uniforms.uCameraPosition.value.copy(cam.position);
+      }
+    }
+  }
+
   // 8. Main Render & Simulation Loop
   let lastFrameTime = performance.now();
   function animate() {
@@ -796,6 +1155,10 @@ export function initApexGame(): any {
       physicsWorld.step(dt);
       const pState: PhysicsVehicleState = (physicsWorld as any).state;
 
+      // Stream 3D track sectors around player vehicle's current arc-length
+      const totalTrackLen = splineStreamer.getTotalLength();
+      splineStreamer.streamLookaheadWindow(pState.alongOffset, totalTrackLen, 2, 6);
+
       // Step AI director
       aiDirector.step(dt, {
         alongOffset: pState.alongOffset,
@@ -804,33 +1167,148 @@ export function initApexGame(): any {
         currentLap: pState.alongOffset > 0 ? aiDirector.currentLap : 1,
       });
 
+      // Update 3D AI Rival Car Positions & Orientations along Spline
+      for (let i = 0; i < aiDirector.racers.length && i < aiRivalModels.length; i++) {
+        const rival = aiDirector.racers[i];
+        const rModel = aiRivalModels[i];
+        const rFrame = splineStreamer.getFrameAtArcLength(rival.alongOffset);
+        const rx = rFrame.position[0] + rFrame.normal[0] * rival.lateralOffset;
+        const ry = rFrame.position[1];
+        const rz = rFrame.position[2] + rFrame.normal[2] * rival.lateralOffset;
+
+        rModel.rootGroup.position.set(rx, ry, rz);
+        const rTargetX = rx + rFrame.tangent[0] * 10.0;
+        const rTargetY = ry + rFrame.tangent[1] * 10.0;
+        const rTargetZ = rz + rFrame.tangent[2] * 10.0;
+        rModel.rootGroup.lookAt(rTargetX, rTargetY, rTargetZ);
+        spinWheels(rModel, (rival.speedKph / 3.6) / 0.34, dt);
+        syncVehicleShaderUniforms(rModel, camera);
+      }
+
       // Audio engine update
       const currentSpec = getVehicleById(selectedVehicleId) || VEHICLE_ROSTER[0];
       synthEngine.updateEngineAudio(currentSpec, pState.rpm, throttle);
 
-      // Tire Skid SFX if drifting or braking hard
-      if (brake > 0.5 && pState.speedKph > 50) {
-        synthEngine.playTireSkid(0.8);
+      // Tire Skid SFX & Realistic Tire Smoke VFX if drifting or braking hard
+      if ((brake > 0.5 || handbrake || Math.abs(steer) > 0.65) && pState.speedKph > 45) {
+        if (brake > 0.5 || handbrake) {
+          synthEngine.playTireSkid(0.75);
+        }
+        const carPos = new THREE.Vector3(...pState.position);
+        const rightVec = new THREE.Vector3(...pState.right);
+        const fwdVec = new THREE.Vector3(...pState.forward);
+        for (const side of [-0.85, 0.85]) {
+          const wheelPos = carPos
+            .clone()
+            .addScaledVector(rightVec, side)
+            .addScaledVector(fwdVec, -1.35);
+          spawnMotorsportParticle(
+            wheelPos,
+            new THREE.Vector3(
+              (Math.random() - 0.5) * 1.4,
+              0.6 + Math.random() * 0.8,
+              (Math.random() - 0.5) * 1.4
+            ),
+            'smoke'
+          );
+        }
       }
 
-      // HUD telemetry update
+      // Realistic Orange Barrier Sparks on Wall Scrape
+      const isScraping = Boolean((pState as any).scrapingBarrier) || Math.abs(pState.lateralOffset) >= 9.6;
+      if (isScraping && pState.speedKph > 25) {
+        const carPos = new THREE.Vector3(...pState.position);
+        const rightVec = new THREE.Vector3(...pState.right);
+        const sideSign = pState.lateralOffset >= 0 ? 1.0 : -1.0;
+        const sparkOrigin = carPos.clone().addScaledVector(rightVec, sideSign * 0.98);
+        sparkOrigin.y += 0.35;
+        for (let sp = 0; sp < 2; sp++) {
+          spawnMotorsportParticle(
+            sparkOrigin,
+            new THREE.Vector3(
+              -sideSign * (1.5 + Math.random() * 3.0),
+              1.5 + Math.random() * 3.5,
+              (Math.random() - 0.5) * 3.0
+            ),
+            'spark'
+          );
+        }
+      }
+
+      updateMotorsportParticles(dt);
+
+      // HUD telemetry & GPS Minimap update
       const state = controller.getState();
+      raceHUD.setMinimapPositions(
+        pState.alongOffset / (totalTrackLen || 5000),
+        aiDirector.racers.map((r) => r.alongOffset / (totalTrackLen || 5000))
+      );
       raceHUD.update(state.telemetry);
 
-      // Update 3D car visual mesh and cockpit
+      // Update Player 3D Car Position, Orientation, Suspension Weight Transfer & Wheels
       if (currentVehicleModel) {
+        currentVehicleModel.rootGroup.position.set(
+          pState.position[0],
+          pState.position[1] + currentTuning.rideHeightOffset,
+          pState.position[2]
+        );
+
+        const fwd = new THREE.Vector3(...pState.forward);
+        const right = new THREE.Vector3(...pState.right);
+        const lookTarget = new THREE.Vector3(...pState.position)
+          .addScaledVector(fwd, 10.0)
+          .addScaledVector(right, steer * 1.35);
+        currentVehicleModel.rootGroup.lookAt(lookTarget);
+
+        // Authentic Sim-Cade Suspension Pitch & Roll on Bodywork Group
+        const speedNorm = Math.min(1.0, pState.speedKph / 160.0);
+        const targetPitch = brake * 0.038 - throttle * 0.022;
+        const targetRoll = -steer * speedNorm * 0.055;
+        currentVehicleModel.bodyworkGroup.rotation.x = THREE.MathUtils.lerp(
+          currentVehicleModel.bodyworkGroup.rotation.x,
+          targetPitch,
+          0.2
+        );
+        currentVehicleModel.bodyworkGroup.rotation.z = THREE.MathUtils.lerp(
+          currentVehicleModel.bodyworkGroup.rotation.z,
+          targetRoll,
+          0.2
+        );
+
+        steerWheels(currentVehicleModel, -steer * 0.42);
         updateVehicle(currentVehicleModel, state.telemetry, dt);
+        syncVehicleShaderUniforms(currentVehicleModel, camera);
+      }
+
+      // Dynamic Speed-Driven FOV Warp (72 deg at rest -> 88 deg at 350 KPH)
+      const targetFov = 72 + Math.min(16, (pState.speedKph / 350) * 16);
+      if (Math.abs(camera.fov - targetFov) > 0.1) {
+        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.12);
+        camera.updateProjectionMatrix();
       }
 
       // Update Camera Position based on CameraMode
       updateCameraPose(cameraMode, camera, pState);
     } else if (phase === 'PADDOCK') {
-      // Rotate vehicle turntable slowly in showroom
-      if (currentVehicleModel) {
-        currentVehicleModel.rootGroup.rotation.y += 0.4 * dt;
+      // Smooth turntable rotation when user is not manually dragging
+      if (!isDraggingShowroom) {
+        showroomOrbitYaw += 0.28 * dt;
       }
-      camera.position.set(0, 1.8, 5.5);
-      camera.lookAt(0, 0.5, 0);
+      if (currentVehicleModel) {
+        currentVehicleModel.rootGroup.position.set(0, currentTuning.rideHeightOffset, 0);
+        currentVehicleModel.rootGroup.rotation.set(0, 0, 0);
+        currentVehicleModel.bodyworkGroup.rotation.set(0, 0, 0);
+        syncVehicleShaderUniforms(currentVehicleModel, camera);
+      }
+      const camX = Math.sin(showroomOrbitYaw) * Math.cos(showroomOrbitPitch) * showroomOrbitDistance;
+      const camY = Math.max(0.55, Math.sin(showroomOrbitPitch) * showroomOrbitDistance);
+      const camZ = Math.cos(showroomOrbitYaw) * Math.cos(showroomOrbitPitch) * showroomOrbitDistance;
+      camera.position.set(camX, camY, camZ);
+      camera.lookAt(0, 0.48, 0);
+      if (Math.abs(camera.fov - 52) > 0.5) {
+        camera.fov = 52; // Cinematic 50mm Showroom portrait lens
+        camera.updateProjectionMatrix();
+      }
     }
 
     // Render 3D Frame
@@ -849,32 +1327,32 @@ export function initApexGame(): any {
     if (mode === 'CHASE') {
       const targetPos = pos
         .clone()
-        .sub(forward.clone().multiplyScalar(6.5))
-        .add(up.clone().multiplyScalar(2.2));
-      cam.position.lerp(targetPos, 0.15);
-      cam.lookAt(pos.clone().add(forward.clone().multiplyScalar(4.0)));
+        .sub(forward.clone().multiplyScalar(6.2))
+        .add(up.clone().multiplyScalar(2.15));
+      cam.position.lerp(targetPos, 0.22);
+      cam.lookAt(pos.clone().add(forward.clone().multiplyScalar(4.5)).add(up.clone().multiplyScalar(0.45)));
     } else if (mode === 'COCKPIT') {
       const eyePos = pos
         .clone()
         .add(up.clone().multiplyScalar(0.95))
         .add(forward.clone().multiplyScalar(0.1));
       cam.position.copy(eyePos);
-      cam.lookAt(eyePos.clone().add(forward.clone().multiplyScalar(10.0)));
+      cam.lookAt(eyePos.clone().add(forward.clone().multiplyScalar(12.0)));
     } else if (mode === 'HOOD') {
       const hoodPos = pos
         .clone()
-        .add(up.clone().multiplyScalar(0.7))
-        .add(forward.clone().multiplyScalar(1.4));
+        .add(up.clone().multiplyScalar(0.72))
+        .add(forward.clone().multiplyScalar(1.35));
       cam.position.copy(hoodPos);
-      cam.lookAt(hoodPos.clone().add(forward.clone().multiplyScalar(15.0)));
+      cam.lookAt(hoodPos.clone().add(forward.clone().multiplyScalar(18.0)));
     } else if (mode === 'ORBIT') {
       const t = performance.now() * 0.0005;
-      cam.position.set(pos.x + Math.sin(t) * 7.0, pos.y + 2.5, pos.z + Math.cos(t) * 7.0);
-      cam.lookAt(pos);
+      cam.position.set(pos.x + Math.sin(t) * 6.8, pos.y + 2.4, pos.z + Math.cos(t) * 6.8);
+      cam.lookAt(pos.clone().add(up.clone().multiplyScalar(0.5)));
     } else {
       // SHOWROOM
-      cam.position.set(0, 1.8, 5.5);
-      cam.lookAt(0, 0.5, 0);
+      cam.position.set(0, 1.8, 5.2);
+      cam.lookAt(0, 0.48, 0);
     }
   }
 

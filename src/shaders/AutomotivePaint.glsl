@@ -8,16 +8,6 @@
 #pragma VERTEX_SHADER
 precision highp float;
 
-attribute vec3 position;
-attribute vec3 normal;
-attribute vec2 uv;
-attribute vec4 tangent;
-
-uniform mat4 modelMatrix;
-uniform mat4 viewMatrix;
-uniform mat4 projectionMatrix;
-uniform mat3 normalMatrix;
-
 varying vec3 vWorldPosition;
 varying vec3 vWorldNormal;
 varying vec3 vWorldTangent;
@@ -33,9 +23,9 @@ void main() {
   vWorldPosition = worldPos.xyz;
 
   vec3 N = normalize(mat3(modelMatrix) * normal);
-  vec3 T = normalize(mat3(modelMatrix) * tangent.xyz);
-  T = normalize(T - dot(T, N) * N);
-  vec3 B = cross(N, T) * (tangent.w == 0.0 ? 1.0 : tangent.w);
+  vec3 upRef = abs(N.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+  vec3 T = normalize(cross(upRef, N));
+  vec3 B = normalize(cross(N, T));
 
   vWorldNormal = N;
   vWorldTangent = T;
@@ -309,11 +299,20 @@ void main() {
 
   float specClearcoat = (D_cc * G_cc * F_cc) / max(4.0 * NdotV_macro * NdotL_macro, 1e-4);
   vec3 R_macro = reflect(-V, N_macro);
-  float horizonSpec = pow(clamp(0.5 * R_macro.y + 0.5, 0.0, 1.0), 2.2);
-  vec3 ccEnvReflection = mix(uAmbientGroundColor * 0.4, uAmbientSkyColor * 2.4, horizonSpec) * uEnvMapIntensity;
+  float horizonSpec = pow(clamp(0.5 * R_macro.y + 0.5, 0.0, 1.0), 1.8);
+  // Studio overhead softbox light strips + horizon skyline reflection
+  float softbox1 = smoothstep(0.72, 0.88, R_macro.y) * smoothstep(0.55, 0.25, abs(R_macro.x));
+  float softbox2 = smoothstep(0.35, 0.52, R_macro.y) * smoothstep(0.18, 0.04, abs(abs(R_macro.x) - 0.65));
+  vec3 studioStrips = vec3(1.0, 0.98, 0.95) * (softbox1 * 2.2 + softbox2 * 1.6);
+  vec3 ccEnvReflection = (mix(uAmbientGroundColor * 0.5, uAmbientSkyColor * 2.4, horizonSpec) + studioStrips) * uEnvMapIntensity;
+
+  // Back/side rim fill light for dramatic showroom silhouette definition
+  vec3 L_fill = normalize(vec3(-L.x, 0.45, -L.z));
+  float NdotL_fill = max(dot(N_macro, L_fill), 0.0);
+  vec3 fillContribution = baseAlbedo * uAmbientSkyColor * NdotL_fill * 0.48;
 
   // Energy-conserving dual-layer composite: attenuate base coat by (1 - F_cc_view)
-  vec3 compositeColor = baseLayerLit * (1.0 - F_cc_view)
+  vec3 compositeColor = (baseLayerLit + fillContribution) * (1.0 - F_cc_view)
     + (specClearcoat * directRadiance * NdotL_macro + F_cc_view * ccEnvReflection);
 
   // 6. Carbon-Ceramic Brake Disc Thermal Glow (20C .. 1000C)
