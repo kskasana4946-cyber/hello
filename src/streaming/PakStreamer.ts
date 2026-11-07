@@ -288,12 +288,30 @@ export function parsePakToc(buffer: ArrayBuffer, entryCount: number): PakTocEntr
   for (let i = 0; i < entryCount; i++) {
     const base = APEX_PAK_HEADER_BYTES + i * APEX_PAK_TOC_ENTRY_BYTES;
     const name = readFixedUtf8String(u8, base, 32);
-    const chunkType = dv.getUint32(base + 32, true) as PakChunkTypeId;
-    const width = dv.getUint32(base + 36, true);
-    const height = dv.getUint32(base + 40, true);
-    const depthOrItems = dv.getUint32(base + 44, true);
-    const byteOffset = Number(dv.getBigUint64(base + 48, true));
-    const byteLength = Number(dv.getBigUint64(base + 56, true));
+    let chunkType = dv.getUint32(base + 32, true) as PakChunkTypeId;
+    let width = dv.getUint32(base + 36, true);
+    let height = dv.getUint32(base + 40, true);
+    let depthOrItems = dv.getUint32(base + 44, true);
+    let byteOffset = Number(dv.getBigUint64(base + 48, true));
+    let byteLength = Number(dv.getBigUint64(base + 56, true));
+
+    // Support <32sQQIIQ TOC layout (used by build_track_paks.py: byteOffset at +32, byteLength at +40, chunkType at +48)
+    if (
+      byteOffset < requiredBytes ||
+      byteLength === 0 ||
+      byteOffset + byteLength > buffer.byteLength
+    ) {
+      const altOffset = Number(dv.getBigUint64(base + 32, true));
+      const altLength = Number(dv.getBigUint64(base + 40, true));
+      if (altOffset >= requiredBytes && altLength > 0 && altOffset + altLength <= buffer.byteLength) {
+        byteOffset = altOffset;
+        byteLength = altLength;
+        chunkType = dv.getUint32(base + 48, true) as PakChunkTypeId;
+        width = altLength;
+        height = 1;
+        depthOrItems = 1;
+      }
+    }
 
     entries.push({
       name,
@@ -340,6 +358,8 @@ export function parsePakBundle(buffer: ArrayBuffer): ParsedPakBundle {
     metadata,
   };
 }
+
+export const parsePakBuffer = parsePakBundle;
 
 // ============================================================================
 // 3. LRU GPU VRAM CACHE & OCTREE 500M SECTOR STREAMER
@@ -390,11 +410,11 @@ export class PakStreamer {
   >();
   private nextRequestId = 1;
 
-  // Nominal footprint sizes matching the ~400 MB modular architecture
-  public static readonly NOMINAL_VEHICLE_PAK_BYTES = 4_705_888;     // ~4.71 MB × 34 = ~160 MB
-  public static readonly NOMINAL_SKY_PAK_BYTES = 13_107_200;        // 12.50 MiB × 4 = 50 MiB
-  public static readonly NOMINAL_TRACK_PAK_BYTES = 41_943_040;      // 40.00 MiB × 4 = 160 MiB
-  public static readonly NOMINAL_TRACK_SECTOR_BYTES = 419_430;      // 1/100th of 40 MiB per 500m sector
+  // Nominal footprint sizes matching the ~800 MB modular architecture
+  public static readonly NOMINAL_VEHICLE_PAK_BYTES = 9_411_776;     // ~9.412 MB × 34 = 320.00 MB (320,000,384 B)
+  public static readonly NOMINAL_SKY_PAK_BYTES = 26_214_400;        // 25.00 MiB × 4 = 100.00 MiB (104,857,600 B)
+  public static readonly NOMINAL_TRACK_PAK_BYTES = 83_886_080;      // 80.00 MiB × 4 = 320.00 MiB (335,544,320 B)
+  public static readonly NOMINAL_TRACK_SECTOR_BYTES = 838_860;      // 1/100th of 80 MiB per 500m sector
 
   constructor(options: PakStreamerOptions = {}) {
     this.maxVramBytes = options.maxVramBytes ?? 256 * 1024 * 1024; // 256 MiB default VRAM budget

@@ -25,8 +25,8 @@ import {
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const TRACKS_DIR = path.join(ROOT_DIR, 'assets', 'paks', 'tracks');
-const EXPECTED_PAK_BYTES = 41_943_040; // 40.00 MiB
-const TOTAL_TRACK_BYTES = EXPECTED_PAK_BYTES * 4; // 160.00 MiB
+const EXPECTED_PAK_BYTES = 83_886_080; // 80.00 MiB
+const TOTAL_TRACK_BYTES = EXPECTED_PAK_BYTES * 4; // 320.00 MiB (335,544,320 B)
 
 describe('Part 3 / Milestone M3: Modular Track Biome Paks & Tactical Ramps', () => {
   describe('F22: Python Track Biome .PAK Builder & Container Integrity', () => {
@@ -40,7 +40,7 @@ describe('Part 3 / Milestone M3: Modular Track Biome Paks & Tactical Ramps', () 
       expect(content).not.toMatch(/^\s*(import\s+scipy|from\s+scipy)/m);
     });
 
-    it('verifies exact file sizes (41,943,040 B each, 167,772,160 B total) and aliases on disk', () => {
+    it('verifies exact file sizes (83,886,080 B each, 335,544,320 B total) and aliases on disk', () => {
       const biomes = ['track_golden_gp', 'track_neotokyo', 'track_canyon', 'track_alpine'];
       const aliases = ['track_01', 'track_02', 'track_03', 'track_04'];
 
@@ -97,12 +97,12 @@ describe('Part 3 / Milestone M3: Modular Track Biome Paks & Tactical Ramps', () 
 
         // TOC Entries (6 entries, 64 bytes each)
         const expectedChunks = [
-          { name: 'asphalt_albedo_4k', len: 16_777_216 },
-          { name: 'asphalt_normal_16bit', len: 16_777_216 },
-          { name: 'asphalt_pbr_masks_2k', len: 4_194_304 },
-          { name: 'terrain_heightfield_16bit', len: 2_097_152 },
-          { name: 'botanical_scenery_meshes', len: 1_572_864 },
-          { name: 'sectors_100_stream', len: 523_840 },
+          { name: 'asphalt_albedo_4k', len: 33_554_432 },
+          { name: 'asphalt_normal_16bit', len: 25_165_824 },
+          { name: 'asphalt_pbr_masks_2k', len: 8_388_608 },
+          { name: 'terrain_heightfield_16bit', len: 4_194_304 },
+          { name: 'botanical_scenery_meshes', len: 6_291_456 },
+          { name: 'sectors_100_stream', len: 6_291_008 },
         ];
 
         let runningOffset = 64 + 6 * 64; // 448

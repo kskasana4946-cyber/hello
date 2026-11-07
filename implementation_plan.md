@@ -75,3 +75,30 @@ Every `.pak` file starts with a 64-byte little-endian header followed by `entryC
 - `src/ai/RacingAIDirector.ts` implements 5 AI difficulty tiers (`Easy` to `Super Hard`) and 7 race formats (`1/2/3/5/10 Lap` formats, `Knockout Elimination`, and `Solo Time Attack` with Ghost Car & Sector 1/2/3 splits).
 - `src/audio/GranularSynthEngine.ts` synthesizes multi-RPM exhaust audio, V12 boot roar, turbo blow-off, skids, plasma rings, shockwaves, and knockout explosions.
 - `src/main.ts` and `index.html` integrate all Parts and expose `window.__APEX_GAME__` for deterministic E2E verification.
+
+### Part 7 & Round 2 (M8): 800 MB Footprint, Bespoke 34-Car Visuals & Next-Gen Motorsport Physics Overhaul
+- **800 MB Modular Asset Footprint Breakdown**:
+  - Vehicles & 48kHz Audio: 320 MB (34 vehicles × 9,411,776 B = 320.0 MB, ~5.40 MB/car audio bank)
+  - Tracks & Biomes: 320 MB (4 circuits × 83,886,080 B = 335.5 MB)
+  - Sky & Atmosphere: 100 MB (4 skies × 26,214,400 B = 104.9 MB)
+  - Core Physics & Code: 60 MB
+  - Total: 800 MB budget (~760.4 MB on disk .pak pool + ~48 MB core = ~808.4 MB)
+- **Bespoke 34-Vehicle Visuals Architecture (`src/vehicles/`)**:
+  - `HighPolyVehicleBuilder.ts`: Dedicated geometry builders per archetype:
+    - Scooter (#1): 2-wheel inline frame, handlebars, grips/levers, dual-tier saddle, full 3D rider silhouette with helmet.
+    - Bugatti Chiron (#27): Signature horseshoe grille, sweeping side C-line contour scoop, center spine dorsal crease, quad exhausts.
+    - Open-Wheel / Formula 1 (#32, #30): Open wheels, exposed wishbones, titanium HALO/Aeroscreen, sidepods, multi-tier wings.
+    - Heavy Commercial & Trucks (#14 semi rig, #15 bus, #13 swat, #9 baja): High commercial cabs, dually rear wheels, vertical chrome stacks, faceted armor, dual angled bed spare tires.
+    - GT3, Muscle, Supercars: Authentic silhouettes, swan-neck wings, diffusers.
+  - `CockpitInteriorBuilder.ts`: Adaptive windshield/cowl/aeroscreen framing and steering controls (handlebars, butterfly yoke, commercial truck wheel, flat-bottom GT wheel).
+- **Next-Gen Audio Synth Engine (`src/audio/GranularSynthEngine.ts`)**:
+  - 6-voice hybrid granular synth + 12 custom 32-harmonic PeriodicWave Fourier wavetables.
+  - 48kHz multi-RPM PCM bank decoding (`decodePcmChunkToAudioBuffer`, `loadVehiclePcmBank`).
+  - Persistent stick-slip dual-formant tire screech resonator (820Hz & 2450Hz).
+  - Motorsport transients: turbo flutter, sequential shift-shock, 3D kerb rumble, barrier scrape, AI Doppler, tunnel convolution reverb.
+- **240Hz Physics & Biome Visuals (`src/physics/RapierVehicleWorld.ts`, `src/tracks/SplineTrackStreamer.ts`)**:
+  - Multi-surface Pacejka grip (`ASPHALT`, `KERB`, `SHOULDER`, `PUDDLE` with hydroplaning >140 KPH).
+  - 4-corner thermodynamic tire model (`35°C..120°C`).
+  - 3D FIA sawtooth kerb vertical excitation.
+  - Slipstream drafting wake (-28% drag).
+  - Lit tunnels, 6-strip sculpted shoulders, signature 3D landmarks for all 4 biomes.

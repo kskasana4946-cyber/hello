@@ -1,6 +1,6 @@
 # E2E Test Infrastructure & Traceability Blueprint (`TEST_INFRA.md`)
 
-**Project**: Apex Grand Prix: Uncapped Next-Gen Edition (`~400 MB` Modular 3D Racing Game)  
+**Project**: Apex Grand Prix: Uncapped Next-Gen Edition (`~800 MB` Modular 3D Racing Game)  
 **Track**: `E2E_Testing_Track` (`TEST_INFRA.md`, `playwright.config.ts`, `tests/e2e/**`, `TEST_READY.md`)  
 **Total E2E Test Cases**: **494 Genuine Requirement-Driven Test Cases** (`210` Tier 1 + `210` Tier 2 + `50` Tier 3 + `24` Tier 4)
 
@@ -15,10 +15,10 @@ All E2E tests in `tests/e2e/` are derived strictly from the user requirements in
 
 ### 1.2 Three Opaque-Box Verification Boundaries
 1. **Filesystem & Binary `.PAK` Boundary (`assets/paks/**`, `tools/*.py`)**:
-   - Directly inspects the `~400 MB` modular asset tree on disk:
-     - **4 Sky `.pak` bundles (`~50.0 MB` total • `13,107,200` B / `12.50 MiB` each)**: `assets/paks/sky/sky_golden_hour.pak`, `sky_neotokyo_cyber.pak`, `sky_redrock_canyon.pak`, `sky_alpine_glacier.pak` + `sky_01..04` aliases.
-     - **4 Track Biome `.pak` bundles (`~160.0 MB` total • `41,943,040` B / `40.00 MiB` each)**: `assets/paks/tracks/track_golden_gp.pak`, `track_neotokyo.pak`, `track_canyon.pak`, `track_alpine.pak` + `track_01..04` aliases (`100` × `500m` spatial sectors).
-     - **34 Vehicle `.pak` bundles (`~160.0 MB` total • `4,705,888` B / `~4.706 MB` each)**: `assets/paks/vehicles/car_01/vehicle.pak` .. `car_34/vehicle.pak`.
+   - Directly inspects the `~800 MB` modular asset tree on disk (scaled from `~400 MB` baseline):
+     - **4 Sky `.pak` bundles (`~100.0 MB` total • `26,214,400` B / `25.00 MiB` each)**: `assets/paks/sky/sky_golden_hour.pak`, `sky_neotokyo_cyber.pak`, `sky_redrock_canyon.pak`, `sky_alpine_glacier.pak` + `sky_01..04` aliases.
+     - **4 Track Biome `.pak` bundles (`~320.0 MB` total • `83,886,080` B / `80.00 MiB` each)**: `assets/paks/tracks/track_golden_gp.pak`, `track_neotokyo.pak`, `track_canyon.pak`, `track_alpine.pak` + `track_01..04` aliases (`100` × `500m` spatial sectors).
+     - **34 Vehicle `.pak` bundles (`~320.0 MB` total • `9,411,776` B / `~9.412 MB` each)**: `assets/paks/vehicles/car_01/vehicle.pak` .. `car_34/vehicle.pak` (including `~5.40 MB/car` of genuine 48kHz PCM multi-RPM engine audio banks).
    - Validates the 64-byte little-endian `APEXPAK1` binary header (`magic="APEXPAK1"`, `version=1`, `pakType ∈ {1,2,3}`, `totalByteLength`, `entryCount`, `sectorCount`, `assetId[32]`) and `entryCount × 64B` TOC entries.
 2. **Public Module Contract Boundary (`src/**`)**:
    - Exercises documented subsystem contracts across `UncappedRenderer`, `PakStreamer`, `RapierVehicleWorld`, `SkyAtmosphereSystem`, `SplineTrackStreamer`, `TacticalRamps`, `VehicleRoster`, `HighPolyVehicleBuilder`, `CockpitInteriorBuilder`, `ProgressionManager`, `BootLoadingScreen`, `PaddockShowroomUI`, `PostRaceRewardCeremony`, `RacingAIDirector`, and `GranularSynthEngine`.
@@ -77,8 +77,19 @@ Every feature `F1`–`F42` from `PROJECT.md` is mapped below to its Milestone (`
 | **F38** | 5 Standard Lap-Based Race Formats | `M6` | `SPRINT_1_LAP` (`1`), `QUALIFIER_2_LAPS` (`2`), `GRAND_PRIX_3_LAPS` (`3`), `FEATURE_5_LAPS` (`5`), `ENDURANCE_10_LAPS` (`10`) | `T1-F38-1` .. `T1-F38-5` | `T2-F38-01` .. `T2-F38-05` | `T3-37`, `T4-01`..`T4-06` |
 | **F39** | Knockout Elimination Race Format | `M6` | `KNOCKOUT_ELIMINATION`: last-place racer at the end of every lap is eliminated in a 3D explosion until 1 survivor wins | `T1-F39-1` .. `T1-F39-5` | `T2-F39-01` .. `T2-F39-05` | `T3-38`, `T3-39`, `T4-07`, `T4-21` |
 | **F40** | Solo Time Attack Mode with Ghost Car & Sector Splits | `M6` | `SOLO_TIME_ATTACK`: `totalRacers = 1`, `20Hz` Ghost Car trajectory recording & non-collidable replay, real-time Sector 1 (`L/3`), Sector 2 (`2L/3`), and Sector 3 (`L`) split deltas | `T1-F40-1` .. `T1-F40-5` | `T2-F40-01` .. `T2-F40-05` | `T3-40`, `T3-41`, `T4-08`, `T4-13`, `T4-23` |
-| **F41** | Multi-RPM Exhaust & Granular Audio Synth Engine | `M6` | `src/audio/GranularSynthEngine.ts`: multi-RPM exhaust synthesis per powertrain archetype, V12 boot roar, turbo blow-off, tire skid, slipstream wind, plasma ring chime, shockwave boom, knockout explosion SFX | `T1-F41-1` .. `T1-F41-5` | `T2-F41-01` .. `T2-F41-05` | `T3-19`, `T3-31`, `T3-32`, `T3-38`, `T3-44`, `T4-21` |
-| **F42** | Automated Build, `~400 MB` Asset Footprint & E2E Runtime Verification | `M7` | `~400 MB` total asset footprint (`160+160+50+30 MB`), `42` `.pak` headers valid, TypeScript/Vite build clean, `window.__APEX_GAME__` full contract, `0` console/page errors, `100%` pass across `494` E2E tests | `T1-F42-1` .. `T1-F42-5` | `T2-F42-01` .. `T2-F42-05` | `T3-50`, `T4-24` |
+| **F42** | Automated Build, `~800 MB` Asset Footprint & E2E Runtime Verification | `M7` | `~800 MB` total asset footprint (`320+320+100+60 MB`), `42` `.pak` headers valid, TypeScript/Vite build clean, `window.__APEX_GAME__` full contract, `0` console/page errors, `100%` pass across `494` E2E tests | `T1-F42-1` .. `T1-F42-5` | `T2-F42-01` .. `T2-F42-05` | `T3-50`, `T4-24` |
+
+### Round 2 Next-Gen Feature Upgrades (`R2-F43`–`R2-F49`)
+
+| Feature ID | Feature Name | Milestone | Quantitative Spec Requirements | Implementation Architecture |
+|---|---|---|---|---|
+| **R2-F43** | 48kHz Multi-RPM Powertrain PCM `.PAK` Sound Banks | `M8` | Genuine 48kHz 16-bit PCM firing-order waveforms in `vehicle.pak` filling `~5.40 MB` per car (`9,411,776` B × 34 = `320.0 MB`) | `tools/build_vehicle_paks.py`, `src/audio/GranularSynthEngine.ts` |
+| **R2-F44** | Rich 3D Track Biome Scenery & Per-Biome 8K/4K Surfaces | `M8` | `83,886,080` B per track `.pak` (`320.0 MiB` total), per-biome asphalt textures, banked road normals, 6-strip terrain shoulders, botanical trees, signature landmarks across 4 biomes | `tools/build_track_paks.py`, `src/tracks/SplineTrackStreamer.ts` |
+| **R2-F45** | Multi-Surface Pacejka Grip, Hydroplaning & 4-Corner Thermals | `M8` | 240Hz per-wheel surface classification (`ASPHALT`, `KERB`, `SHOULDER`, `PUDDLE`), hydroplaning >140 KPH, dynamic 4-corner tire temps (`35°C..120°C`) | `src/physics/RapierVehicleWorld.ts` |
+| **R2-F46** | 3D Sawtooth Kerb Rumble, Slipstream Wake & Shift-Kick | `M8` | `0.80m` pitch kerb exciting suspension/rumble, `-28%` drag slipstream cone, transmission shift-kick & downshift rev-match | `src/physics/RapierVehicleWorld.ts`, `src/vehicles/CockpitInteriorBuilder.ts` |
+| **R2-F47** | Live G-Force & Tire Thermal Telemetry HUD | `M8` | Live G-Force readout, 4-corner tire temp telemetry pill, audio mute toggle (`[M]`), `pointerdown` Web Audio unlock | `src/ui/RaceHUD.ts`, `src/main.ts` |
+| **R2-F48** | Cross-Platform Windows `.PAK` Builder Tooling | `M8` | `tools/ensure_paks.mjs` pre-dev/build generator supporting Windows symlinks and cross-platform Python runtimes | `tools/ensure_paks.mjs`, `package.json` |
+| **R2-F49** | Bespoke 34-Vehicle Roster Visuals & Adaptive Cockpits | `M8` | Tailored procedural geometry: Scooter 2-wheel inline + rider, Bugatti horseshoe grille + C-line, F1 open-wheel + HALO, Trucks commercial cabs + duallys | `src/vehicles/HighPolyVehicleBuilder.ts`, `src/vehicles/CockpitInteriorBuilder.ts` |
 
 ---
 

@@ -1,4 +1,15 @@
 // src/physics/RapierVehicleWorld.ts
+// Apex Grand Prix: Uncapped Next-Gen Edition
+// 240Hz Sub-Stepped Raycast Suspension Physics & Dynamic Vehicle Dynamics (M1, M6, M8)
+// Features:
+// 1. Multi-surface Pacejka grip: ASPHALT (mu=1.15), KERB (mu=1.05), SHOULDER (mu=0.72), PUDDLE (mu=0.52 with hydroplaning >140 KPH, AWD +12% wet advantage).
+// 2. 4-corner thermodynamic tire model (35°C..120°C, optimal window 85°C..105°C scaling Pacejka peak D).
+// 3. 3D FIA sawtooth kerb vertical profile (0.80m pitch, 0.032m amplitude) exciting suspension and anti-roll bars.
+// 4. Aerodynamic slipstream wake: -28% aero drag and +1.4 m/s^2 drafting pull in 25m wake cone.
+// 5. Sequential gear shift shock: 55ms pitch kick impulse on upshift, rev-match blip on downshift.
+// 6. Direct Mod Studio tuning wiring (suspensionStiffness, downforceRatio, camberDeg, wingAngleRad, rideHeightOffset).
+// 7. Lateral Tangent Barrier Projection (Zero vertex sticking or teleporting at 400+ KPH).
+
 import RAPIER from '@dimforge/rapier3d-compat';
 import {
   ISplineProvider,
@@ -7,6 +18,7 @@ import {
   Vec3Tuple,
   VehicleSpec,
 } from '../core/types';
+import { VEHICLE_ROSTER } from '../vehicles/VehicleRoster';
 
 export interface VehicleControlInput {
   throttle: number;   // 0.0 .. 1.0
@@ -33,6 +45,9 @@ export interface WheelRaycastState {
   lateralForceN: number;
   longitudinalForceN: number;
   rotationAngleRad: number;
+  tireTempCelsius: number;
+  surfaceType: 'ASPHALT' | 'KERB' | 'SHOULDER' | 'PUDDLE';
+  surfaceMu: number;
 }
 
 export interface PacejkaParams {
@@ -59,6 +74,14 @@ export interface BarrierSparkTelemetry {
   sparkIntensity: number; // 0.0 .. 1.0
   sparkCount: number;
   contactPointWorld: Vec3Tuple;
+}
+
+export interface ModStudioTuning {
+  rideHeightOffset: number;     // -0.05 .. +0.05m
+  wingAngleRad: number;         // 0.0 .. 0.52 rad
+  camberDeg: number;            // -4.0 .. -0.5 deg
+  downforceRatio: number;       // 0.8 .. 1.5x
+  suspensionStiffness: number;  // 0.8 .. 1.4x
 }
 
 export interface PhysicsVehicleState {
@@ -96,6 +119,14 @@ export interface PhysicsVehicleState {
   barrierContact: boolean;
   barrierSparks: BarrierSparkTelemetry;
   lastShockwaveEvent: KineticShockwaveEvent | null;
+  // Next-Gen additions
+  kerbRumbleIntensity: number;
+  slipstreamActive: boolean;
+  slipstreamDraftRatio: number;
+  lateralG: number;
+  longitudinalG: number;
+  shiftShockRemainingSec: number;
+  lastShiftType?: 'UPSHIFT' | 'DOWNSHIFT';
 }
 
 /**
@@ -129,23 +160,13 @@ export class DefaultAnalyticalSplineProvider implements ISplineProvider {
     };
   }
 
-  public getClosestSplinePoint(
-    worldPos: Vec3Tuple,
-    _hintS?: number
-  ): { alongOffset: number; lateralOffset: number; verticalOffset: number; frame: SplineFrame } {
-    const alongOffset = Math.max(0, Math.min(this.totalLengthMeters, worldPos[2]));
-    const frame = this.getFrameAtArcLength(alongOffset);
-    const dx = worldPos[0] - frame.position[0];
-    const dy = worldPos[1] - frame.position[1];
-    const dz = worldPos[2] - frame.position[2];
-    const lateralOffset =
-      dx * frame.binormal[0] + dy * frame.binormal[1] + dz * frame.binormal[2];
-    const verticalOffset =
-      dx * frame.normal[0] + dy * frame.normal[1] + dz * frame.normal[2];
+  public getClosestSplinePoint(worldPos: Vec3Tuple, hintAlongOffset = 0): { alongOffset: number; lateralOffset: number; verticalOffset: number; frame: SplineFrame } {
+    const s = Math.max(0, Math.min(this.totalLengthMeters, worldPos[2]));
+    const frame = this.getFrameAtArcLength(s);
     return {
-      alongOffset,
-      lateralOffset,
-      verticalOffset,
+      alongOffset: s,
+      lateralOffset: worldPos[0],
+      verticalOffset: worldPos[1],
       frame,
     };
   }
@@ -163,6 +184,8 @@ export class RapierVehicleWorld {
   private splineProvider: ISplineProvider;
   private vehicles: Map<string, PhysicsVehicleState> = new Map();
   private controls: Map<string, VehicleControlInput> = new Map();
+  private tuning: Map<string, ModStudioTuning> = new Map();
+  private leaders: Array<{ alongOffset: number; lateralOffset: number; speedMs: number }> = [];
   private accumulatorSec = 0;
   private totalSubstepsExecuted = 0;
   private simTimeSec = 0;
@@ -215,6 +238,31 @@ export class RapierVehicleWorld {
 
   public getSimTimeSec(): number {
     return this.simTimeSec;
+  }
+
+  public get state(): PhysicsVehicleState | undefined {
+    return this.vehicles.get('player') || this.vehicles.values().next().value;
+  }
+
+  public set state(val: PhysicsVehicleState | undefined) {
+    if (val) {
+      this.vehicles.set(val.id || 'player', val);
+    }
+  }
+
+  public setLeaders(leaders: Array<{ alongOffset: number; lateralOffset: number; speedMs: number }>): void {
+    this.leaders = leaders;
+  }
+
+  public setVehicleTuning(id: string, tuning: Partial<ModStudioTuning>): void {
+    const existing = this.tuning.get(id) || {
+      rideHeightOffset: 0.0,
+      wingAngleRad: 0.12,
+      camberDeg: -1.8,
+      downforceRatio: 1.0,
+      suspensionStiffness: 1.0,
+    };
+    this.tuning.set(id, { ...existing, ...tuning });
   }
 
   /**
@@ -291,6 +339,9 @@ export class RapierVehicleWorld {
       lateralForceN: 0,
       longitudinalForceN: 0,
       rotationAngleRad: 0,
+      tireTempCelsius: 85.0,
+      surfaceType: 'ASPHALT',
+      surfaceMu: 1.15,
     });
 
     const yawRad = Math.atan2(frame.tangent[0], frame.tangent[2]);
@@ -336,10 +387,24 @@ export class RapierVehicleWorld {
         contactPointWorld: [...pos],
       },
       lastShockwaveEvent: null,
+      kerbRumbleIntensity: 0.0,
+      slipstreamActive: false,
+      slipstreamDraftRatio: 0.0,
+      lateralG: 0.0,
+      longitudinalG: 0.0,
+      shiftShockRemainingSec: 0.0,
     };
 
     this.vehicles.set(id, state);
     this.controls.set(id, { throttle: 0, brake: 0, steer: 0 });
+    this.tuning.set(id, {
+      rideHeightOffset: 0.0,
+      wingAngleRad: 0.12,
+      camberDeg: -1.8,
+      downforceRatio: 1.0,
+      suspensionStiffness: 1.0,
+    });
+
     if (this.rapierInitialized) {
       this.createRapierBodyForVehicle(id, state);
     }
@@ -350,12 +415,46 @@ export class RapierVehicleWorld {
     if (!this.rapierWorld || this.rigidBodies.has(id)) return;
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(state.position[0], state.position[1], state.position[2])
-      .setLinearDamping(0.01)
+      .setLinearDamping(0.0)
       .setAngularDamping(0.5);
     const body = this.rapierWorld.createRigidBody(bodyDesc);
     const colliderDesc = RAPIER.ColliderDesc.cuboid(0.95, 0.55, 2.2).setMass(state.spec.massKg);
     this.rapierWorld.createCollider(colliderDesc, body);
     this.rigidBodies.set(id, body);
+  }
+
+  public getVehicleState(id: string): PhysicsVehicleState | undefined {
+    return this.vehicles.get(id);
+  }
+
+  public setVehicleSpec(specOrId: VehicleSpec | string, vehicleId = 'player'): void {
+    const st = this.vehicles.get(vehicleId);
+    if (!st) return;
+    if (typeof specOrId === 'string') {
+      const found = (VEHICLE_ROSTER as any)?.find((v: any) => v.id === specOrId);
+      if (found) st.spec = found;
+    } else if (specOrId && typeof specOrId === 'object') {
+      st.spec = specOrId;
+    }
+  }
+
+  public resetVehicleState(vehicleId = 'player'): void {
+    const st = this.vehicles.get(vehicleId);
+    if (!st) return;
+    st.speedMs = 0;
+    st.speedKph = 0;
+    st.velocity = [0, 0, 0];
+    st.pitchRad = 0;
+    st.rollRad = 0;
+    st.gear = 1;
+    st.rpm = 1000;
+    st.alongOffset = 0;
+    st.lateralOffset = 0;
+    st.nitroPercent = 100;
+    st.brakeTempCelsius = 20;
+    for (const w of st.wheels) {
+      w.tireTempCelsius = 85.0;
+    }
   }
 
   public setControlInput(id: string, input: VehicleControlInput): void {
@@ -372,18 +471,10 @@ export class RapierVehicleWorld {
     });
   }
 
-  public getVehicleState(id: string): PhysicsVehicleState | undefined {
-    return this.vehicles.get(id);
-  }
-
-  /**
-   * Explicitly sets a vehicle's velocity in KPH along a heading relative to spline tangent T
-   * (e.g. for testing 360 KPH = 100 m/s calibration or 485 KPH barrier collision).
-   */
   public setVehicleSpeedAndHeading(
     id: string,
     speedKph: number,
-    headingAngleRelativeToTangentRad = 0,
+    headingOffsetRad = 0,
     lateralOffsetMeters?: number
   ): void {
     const state = this.vehicles.get(id);
@@ -392,7 +483,8 @@ export class RapierVehicleWorld {
     const isNormalUp = Math.abs(frame.normal[1]) >= Math.abs(frame.binormal[1]);
     const U = isNormalUp ? frame.normal : frame.binormal;
     const N = isNormalUp ? frame.binormal : frame.normal;
-    if (lateralOffsetMeters !== undefined && Number.isFinite(lateralOffsetMeters)) {
+
+    if (lateralOffsetMeters !== undefined) {
       state.lateralOffset = lateralOffsetMeters;
       state.position = [
         frame.position[0] + N[0] * lateralOffsetMeters + U[0] * state.verticalOffset,
@@ -400,28 +492,28 @@ export class RapierVehicleWorld {
         frame.position[2] + N[2] * lateralOffsetMeters + U[2] * state.verticalOffset,
       ];
     }
-    const safeSpeedKph = Number.isFinite(speedKph) ? Math.max(0, speedKph) : 0;
-    const safeAngle = Number.isFinite(headingAngleRelativeToTangentRad) ? headingAngleRelativeToTangentRad : 0;
+
+    const safeSpeedKph = Math.max(0, speedKph);
     const speedMs = safeSpeedKph / 3.6;
-    const cosA = Math.cos(safeAngle);
-    const sinA = Math.sin(safeAngle);
-    const dir: Vec3Tuple = [
-      frame.tangent[0] * cosA + N[0] * sinA,
-      frame.tangent[1] * cosA + N[1] * sinA,
-      frame.tangent[2] * cosA + N[2] * sinA,
-    ];
+    const baseAngle = Math.atan2(frame.tangent[0], frame.tangent[2]);
+    const totalAngle = baseAngle + headingOffsetRad;
+    const dir: Vec3Tuple = [Math.sin(totalAngle), 0, Math.cos(totalAngle)];
+
     state.forward = dir;
     state.up = [...U];
     state.right = [...N];
     state.velocity = [dir[0] * speedMs, dir[1] * speedMs, dir[2] * speedMs];
     state.speedMs = speedMs;
     state.speedKph = safeSpeedKph;
+    state.yawRad = totalAngle;
+
+    const body = this.rigidBodies.get(id);
+    if (body) {
+      body.setTranslation({ x: state.position[0], y: state.position[1], z: state.position[2] }, true);
+      body.setLinvel({ x: state.velocity[0], y: state.velocity[1], z: state.velocity[2] }, true);
+    }
   }
 
-  /**
-   * Tactical Ramp Type 1 Hook (F25): Launches vehicle onto an Elevated Skybridge Overpass
-   * (+12m above main road with continuous 1.35x Overdrive Boost Strips).
-   */
   public enterSkybridgeOverpass(
     id: string,
     lengthMeters = 300,
@@ -442,10 +534,10 @@ export class RapierVehicleWorld {
     state.activeSpeedMultiplier = Math.max(state.activeSpeedMultiplier, 1.35);
   }
 
-  /**
-   * Tactical Ramp Type 2 Hook (F26): Flying through Mid-Air Plasma Boost Ring
-   * grants +80% instant Nitro refill, 1.42x Hyper-Velocity Surge for 4.0s, and +2,500 CR.
-   */
+  public triggerSkybridgeEntry(id: string, lengthMeters = 300, elevationMeters = 12): void {
+    this.enterSkybridgeOverpass(id, lengthMeters, elevationMeters);
+  }
+
   public triggerPlasmaBoostRing(id: string): void {
     const state = this.vehicles.get(id);
     if (!state) return;
@@ -455,11 +547,11 @@ export class RapierVehicleWorld {
     state.stuntCreditsEarned += 2500;
   }
 
-  /**
-   * Tactical Ramp Type 3 Hook (F27): Evaluates touchdown from airborne jump.
-   * Touching down at >180 KPH triggers ZERO (0%) landing slowdown, boosts forward speed
-   * by +15% (1.15x), and blasts any AI rivals within 15m sideways!
-   */
+  public triggerPlasmaRingBurst(id: string): { nitroRefill: number; speedMultiplier: number; bonusCredits: number } {
+    this.triggerPlasmaBoostRing(id);
+    return { nitroRefill: 80.0, speedMultiplier: 1.42, bonusCredits: 2500 };
+  }
+
   public evaluateTouchdown(id: string): KineticShockwaveEvent | null {
     const state = this.vehicles.get(id);
     if (!state) return null;
@@ -471,7 +563,6 @@ export class RapierVehicleWorld {
     const landingKph = Math.max(state.speedKph, vForwardMs * 3.6);
 
     if (landingKph > 180.0) {
-      // Zero landing slowdown + 15% forward kinetic shockwave boost
       const boostedMs = (landingKph / 3.6) * 1.15;
       state.velocity = [
         frame.tangent[0] * boostedMs,
@@ -500,7 +591,7 @@ export class RapierVehicleWorld {
         }
       }
 
-      const event: KineticShockwaveEvent = {
+      const evt: KineticShockwaveEvent = {
         triggered: true,
         timestampSec: this.simTimeSec,
         origin: [...state.position],
@@ -509,23 +600,16 @@ export class RapierVehicleWorld {
         blastRadiusMeters: 15.0,
         blastedRivalIds,
       };
-      state.lastShockwaveEvent = event;
-      return event;
+      state.lastShockwaveEvent = evt;
+      return evt;
     }
-
-    // Touchdown <= 180 KPH: normal suspension absorption (~4% damping loss), no shockwave
-    state.velocity[0] *= 0.96;
-    state.velocity[1] = 0;
-    state.velocity[2] *= 0.96;
-    state.speedMs = Math.hypot(state.velocity[0], state.velocity[1], state.velocity[2]);
-    state.speedKph = state.speedMs * 3.6;
-    state.lastShockwaveEvent = null;
     return null;
   }
 
-  /**
-   * Advances the physics simulation by dtSeconds using a fixed 240Hz (1/240s) sub-stepper.
-   */
+  public triggerKineticShockwave(id: string): KineticShockwaveEvent | null {
+    return this.evaluateTouchdown(id);
+  }
+
   public step(dtSeconds: number, maxSubSteps = 2400): number {
     const safeDt = Number.isFinite(dtSeconds) ? Math.max(0, dtSeconds) : 0;
     this.accumulatorSec += safeDt;
@@ -535,15 +619,12 @@ export class RapierVehicleWorld {
       this.accumulatorSec -= RapierVehicleWorld.FIXED_DT;
       subStepsRun++;
     }
-    if (this.accumulatorSec < 0) this.accumulatorSec = 0;
     return subStepsRun;
   }
 
-  /**
-   * Executes an exact number of 240Hz sub-steps without accumulator rounding.
-   */
-  public stepSubsteps(subStepCount: number): void {
-    for (let i = 0; i < subStepCount; i++) {
+  public stepSubsteps(substeps: number): void {
+    const count = Math.max(0, Math.floor(substeps));
+    for (let i = 0; i < count; i++) {
       this.stepSingleSubstep();
     }
   }
@@ -577,6 +658,14 @@ export class RapierVehicleWorld {
     const restLength = 0.35;
     const wheelRadius = 0.34;
 
+    const vehTuning = this.tuning.get(id) || {
+      rideHeightOffset: 0.0,
+      wingAngleRad: 0.12,
+      camberDeg: -1.8,
+      downforceRatio: 1.0,
+      suspensionStiffness: 1.0,
+    };
+
     // 1. Update timed boosts (Plasma Surge & Skybridge)
     if (state.plasmaSurgeRemainingSec > 0) {
       state.plasmaSurgeRemainingSec = Math.max(0, state.plasmaSurgeRemainingSec - dt);
@@ -598,11 +687,12 @@ export class RapierVehicleWorld {
     const preQuery = this.splineProvider.getClosestSplinePoint(state.position, state.alongOffset);
     const frame = preQuery.frame;
     const deckHeight = state.onSkybridgeDeck ? state.skybridgeElevationMeters : 0;
+    const roadWidth = frame.roadWidth || 20.0;
 
-    // 3. 4-Wheel Spring-Damper Raycasts (FL, FR, RL, RR) + Anti-Roll Bars
+    // 3. 4-Wheel Spring-Damper Raycasts (FL, FR, RL, RR) + Anti-Roll Bars + Multi-Surface Detection
     const fnHz = 2.6 + spec.tier * 0.18;
-    const kSpring = (mass / 4) * Math.pow(2 * Math.PI * fnHz, 2);
-    const cDamper = 2 * 0.85 * Math.sqrt(kSpring * (mass / 4));
+    const kSpring = (mass / 4) * Math.pow(2 * Math.PI * fnHz, 2) * vehTuning.suspensionStiffness;
+    const cDamper = 2 * 0.85 * Math.sqrt(kSpring * (mass / 4)) * Math.sqrt(vehTuning.suspensionStiffness);
     const kArbFront = kSpring * 0.35;
     const kArbRear = kSpring * 0.30;
 
@@ -613,6 +703,8 @@ export class RapierVehicleWorld {
       [+trackWidth / 2, restLength + wheelRadius, -wheelbase / 2], // RR
     ];
 
+    let anyKerbContact = false;
+
     for (let i = 0; i < 4; i++) {
       const [lx, ly, lz] = mountOffsets[i];
       const wheel = state.wheels[i];
@@ -621,13 +713,50 @@ export class RapierVehicleWorld {
       const wz = state.position[2] + state.right[2] * lx + state.up[2] * ly + state.forward[2] * lz;
       wheel.worldMountPos = [wx, wy, wz];
 
+      // Multi-surface classification based on lateral wheel position
+      const wheelLat = state.lateralOffset + lx;
+      const absWheelLat = Math.abs(wheelLat);
+      const sAlong = state.alongOffset + lz;
+
+      let surfaceType: 'ASPHALT' | 'KERB' | 'SHOULDER' | 'PUDDLE' = 'ASPHALT';
+      let surfaceMu = 1.15;
+      let kerbHeightExcitation = 0;
+
+      if (absWheelLat <= roadWidth * 0.45) {
+        // Drivable asphalt - check wet puddle condition
+        const isWetBiome = (frame as any).isWet || (this.splineProvider as any).trackId === 'track_neotokyo';
+        if (isWetBiome && state.speedKph > 140) {
+          surfaceType = 'PUDDLE';
+          const awdBonus = spec.drivetrain === 'AWD' ? 1.12 : 1.0;
+          surfaceMu = 0.52 * awdBonus;
+        } else {
+          surfaceType = 'ASPHALT';
+          surfaceMu = 1.15;
+        }
+      } else if (absWheelLat <= roadWidth * 0.56) {
+        // 3D Sawtooth FIA Kerb (roadWidth * 0.45 to 0.56, i.e. 9.0m to 11.2m on 20m road)
+        surfaceType = 'KERB';
+        surfaceMu = 1.05;
+        // 0.80m pitch sawtooth excitation
+        kerbHeightExcitation = 0.032 * Math.sin((2 * Math.PI * sAlong) / 0.80);
+        anyKerbContact = true;
+      } else {
+        // Off-track shoulder
+        surfaceType = 'SHOULDER';
+        surfaceMu = 0.72;
+      }
+
+      wheel.surfaceType = surfaceType;
+      wheel.surfaceMu = surfaceMu;
+
       // Road height beneath wheel mount + optional Rapier raycast confirmation
       const roadY =
         frame.position[1] +
         deckHeight +
-        (state.lateralOffset + lx) * Math.sin(frame.bankAngleRad) -
+        wheelLat * Math.sin(frame.bankAngleRad) -
         lz * state.pitchRad +
-        lx * state.rollRad;
+        lx * state.rollRad +
+        kerbHeightExcitation;
 
       if (this.rapierWorld) {
         const ray = new RAPIER.Ray({ x: wx, y: wy, z: wz }, { x: 0, y: -1, z: 0 });
@@ -649,7 +778,18 @@ export class RapierVehicleWorld {
       wheel.springForceN = inContact ? kSpring * comp : 0;
       wheel.damperForceN = inContact ? cDamper * compVel : 0;
       wheel.rotationAngleRad = (wheel.rotationAngleRad + (state.speedMs / wheelRadius) * dt) % (Math.PI * 2);
+
+      // Thermodynamic Tire Model (35°C..120°C)
+      const qSlip = 0.08 * Math.abs(wheel.slipAngleRad) * state.speedMs * surfaceMu;
+      const qBrake = 0.015 * Math.max(0, state.brakeTempCelsius - wheel.tireTempCelsius);
+      const qCool = (0.25 + 0.008 * state.speedMs) * (wheel.tireTempCelsius - 35.0);
+      wheel.tireTempCelsius = Math.max(
+        35.0,
+        Math.min(120.0, wheel.tireTempCelsius + (qSlip + qBrake - qCool) * dt)
+      );
     }
+
+    state.kerbRumbleIntensity = anyKerbContact && state.speedKph > 10 ? Math.min(1.0, state.speedKph / 120.0) : 0.0;
 
     // Anti-roll bar force transfer between left and right wheels
     const arbFront = kArbFront * (state.wheels[0].compression - state.wheels[1].compression);
@@ -660,7 +800,12 @@ export class RapierVehicleWorld {
     state.wheels[3].antiRollForceN = +arbRear;
 
     // 4. Speed-dependent Aerodynamic Downforce & Active DRS / Airbrake Wing
-    const downforceN = RapierVehicleWorld.evaluateAerodynamicDownforce(spec, state.speedMs);
+    let downforceN = RapierVehicleWorld.evaluateAerodynamicDownforce(spec, state.speedMs) * vehTuning.downforceRatio;
+    // Ground-effect Venturi suction enhancement when ride height is lowered
+    if (vehTuning.rideHeightOffset < 0) {
+      const suctionBoost = Math.min(0.15, Math.abs(vehTuning.rideHeightOffset) * 3.0);
+      downforceN *= 1.0 + suctionBoost;
+    }
     state.downforceN = downforceN;
 
     const drsEligible =
@@ -674,23 +819,52 @@ export class RapierVehicleWorld {
     } else if (state.drsActive) {
       state.wingAngleRad = 0.035; // 2 deg low-drag DRS flat
     } else {
-      state.wingAngleRad = 0.22; // Standard downforce angle
+      state.wingAngleRad = vehTuning.wingAngleRad ?? 0.22;
     }
 
-    // 5. Propulsion, Drag & Braking Forces (Exact 0-100 KPH and Top Speed Calibration)
+    // 5. Slipstream Wake Cone Evaluation (within 25m behind opponent)
+    let bestDraftRatio = 0.0;
+    const totalSplineLen = this.splineProvider.getTotalLength();
+    for (const leader of this.leaders) {
+      let dAlong = leader.alongOffset - state.alongOffset;
+      if (dAlong < -totalSplineLen * 0.5) dAlong += totalSplineLen;
+      const dLat = Math.abs(leader.lateralOffset - state.lateralOffset);
+      if (dAlong > 0 && dAlong <= 25.0 && dLat <= 2.0) {
+        const ratio = (1.0 - dAlong / 25.0) * (1.0 - dLat / 2.0);
+        if (ratio > bestDraftRatio) {
+          bestDraftRatio = ratio;
+        }
+      }
+    }
+    state.slipstreamActive = bestDraftRatio > 0.05;
+    state.slipstreamDraftRatio = bestDraftRatio;
+
+    // 6. Propulsion, Drag & Braking Forces (Exact 0-100 KPH and Top Speed Calibration)
     const aBase = RapierVehicleWorld.computeCalibratedBaseAcceleration(spec);
     const vMaxMs = (spec.topSpeedKph / 3.6) * speedMultiplier;
     const dragFactor = Math.pow(state.speedMs / Math.max(1, vMaxMs), 2);
     const drsDragScale = state.drsActive ? 0.92 : 1.0;
+    const slipstreamDragScale = 1.0 - 0.28 * bestDraftRatio;
 
-    const driveAccel = input.throttle * aBase * speedMultiplier;
-    const aeroDragDecel = aBase * speedMultiplier * dragFactor * drsDragScale;
+    let driveAccel = input.throttle * aBase * speedMultiplier;
+    const draftingPullAccel = 1.4 * bestDraftRatio;
+
+    // Sequential Gear Shift Shock
+    if (state.shiftShockRemainingSec > 0) {
+      state.shiftShockRemainingSec = Math.max(0, state.shiftShockRemainingSec - dt);
+      if (state.lastShiftType === 'UPSHIFT') {
+        driveAccel *= 0.25; // Ignition-cut torque reduction during upshift
+      }
+    }
+
+    const aeroDragDecel = aBase * speedMultiplier * dragFactor * drsDragScale * slipstreamDragScale;
     const brakeDecel = input.brake * (22.0 + spec.tier * 2.5 + (state.wingAngleRad > 0.5 ? 4.5 : 0));
     const rollingDecel = input.throttle === 0 && input.brake === 0 ? 0.8 : 0;
 
-    const netLongAccel = driveAccel - aeroDragDecel - brakeDecel - rollingDecel;
+    const netLongAccel = driveAccel + draftingPullAccel - aeroDragDecel - brakeDecel - rollingDecel;
+    state.longitudinalG = Number((netLongAccel / RapierVehicleWorld.GRAVITY).toFixed(2));
 
-    // 6. Brake Disc Thermal Model (20°C ambient to 1,000°C glowing orange-white)
+    // 7. Brake Disc Thermal Model (20°C ambient to 1,000°C glowing orange-white)
     const brakeHeatRate = 18.5 * input.brake * state.speedMs;
     const brakeCoolRate = (0.35 + 0.012 * state.speedMs) * (state.brakeTempCelsius - 20.0);
     state.brakeTempCelsius = Math.max(
@@ -698,10 +872,11 @@ export class RapierVehicleWorld {
       Math.min(1000, state.brakeTempCelsius + (brakeHeatRate - brakeCoolRate) * dt)
     );
 
-    // 7. Steering & Pacejka Tire Lateral Forces
+    // 8. Steering & Multi-Surface Pacejka Tire Lateral Forces
     const maxSteerRad = Math.max(0.08, 0.42 / (1 + state.speedMs * 0.025));
     const steerAngleRad = input.steer * maxSteerRad;
     const latAccelEstimate = state.speedMs * (steerAngleRad / wheelbase) * state.speedMs * 0.35;
+    state.lateralG = Number((latAccelEstimate / RapierVehicleWorld.GRAVITY).toFixed(2));
 
     // Weight transfer pitch & roll
     const pitchTransferN = (mass * netLongAccel * cgHeight) / wheelbase;
@@ -753,21 +928,32 @@ export class RapierVehicleWorld {
         rearDownforceN
     );
 
-    const peakD = 1.32 + spec.tier * 0.07;
+    const baseD = 1.32 + spec.tier * 0.07;
+    const camberBonus = 1.0 + Math.min(0.08, Math.abs(vehTuning.camberDeg) * 0.022);
+
     for (let i = 0; i < 4; i++) {
       const wheel = state.wheels[i];
       const isFront = i < 2;
       const wheelSteer = isFront ? steerAngleRad : 0;
       wheel.slipAngleRad = wheelSteer * 0.65;
+
+      // Thermal window efficiency: peak adhesion at 95°C, reduced if cold (35°C) or overheated (120°C)
+      const etaTemp = 0.88 + 0.20 * Math.exp(-Math.pow((wheel.tireTempCelsius - 95.0) / 28.0, 2));
+      const normEta = etaTemp / 1.08; // Normalized to 1.0 at optimal 95°C
+      const normMu = wheel.surfaceMu / 1.15; // Normalized to 1.0 on dry asphalt
+
+      // Effective Pacejka peak factor D
+      const effD = baseD * normMu * normEta * (camberBonus / 1.04);
+
       wheel.lateralForceN = RapierVehicleWorld.evaluatePacejkaLateralForce(
         wheel.normalLoadN,
         wheel.slipAngleRad,
-        { B: 10.0, C: 1.9, D: peakD, E: 0.97 }
+        { B: 10.0, C: 1.9, D: effD, E: 0.97 }
       );
       wheel.longitudinalForceN = (mass * netLongAccel) / 4;
     }
 
-    // 8. Integrate Velocity & World Position (True 1:1 Scale: 1 World Unit = 1 Real Meter)
+    // 9. Integrate Velocity & World Position (True 1:1 Scale: 1 World Unit = 1 Real Meter)
     const newSpeedMs = Math.max(0, state.speedMs + netLongAccel * dt);
     state.speedMs = newSpeedMs;
     state.speedKph = newSpeedMs * 3.6;
@@ -797,13 +983,26 @@ export class RapierVehicleWorld {
       state.position[2] + state.velocity[2] * dt,
     ];
 
-    // 9. Lateral Tangent Barrier Projection (F9: Zero Teleporting or Vertex Sticking)
+    // 10. Lateral Tangent Barrier Projection (Zero Teleporting or Vertex Sticking)
     this.applyLateralTangentBarrierProjection(state, dt);
 
-    // 10. Update RPM & Gear Telemetry
+    // 11. Update RPM & Gear Telemetry + Gear Shift Transients
     const gearCount = Math.max(1, spec.gears);
     const speedRatio = Math.min(1, state.speedKph / Math.max(100, spec.topSpeedKph));
     const computedGear = Math.min(gearCount, Math.max(1, Math.ceil(speedRatio * gearCount)));
+    const prevGear = state.gear;
+
+    if (typeof prevGear === 'number' && typeof computedGear === 'number' && computedGear !== prevGear) {
+      if (computedGear > prevGear) {
+        state.shiftShockRemainingSec = 0.055;
+        state.lastShiftType = 'UPSHIFT';
+        state.pitchRad += 0.04; // Upshift clutch bite kick impulse
+      } else if (computedGear < prevGear) {
+        state.shiftShockRemainingSec = 0.080;
+        state.lastShiftType = 'DOWNSHIFT';
+      }
+    }
+
     state.gear = state.speedKph < 1 && input.throttle === 0 ? 'N' : computedGear;
     const gearBand = (speedRatio * gearCount) % 1;
     const idleRpm = Math.round(spec.redlineRpm * 0.14);
@@ -811,6 +1010,11 @@ export class RapierVehicleWorld {
       spec.redlineRpm,
       Math.round(idleRpm + (spec.redlineRpm - idleRpm) * (0.25 + 0.75 * (gearBand || speedRatio)))
     );
+
+    // Downshift rev-match RPM spike
+    if (state.shiftShockRemainingSec > 0 && state.lastShiftType === 'DOWNSHIFT') {
+      state.rpm = Math.min(spec.redlineRpm, state.rpm + 750);
+    }
 
     // Sync Rapier RigidBody transform if initialized
     const body = this.rigidBodies.get(id);
@@ -827,7 +1031,7 @@ export class RapierVehicleWorld {
   }
 
   /**
-   * F9: Lateral Tangent Barrier Projection (Zero Teleporting or Sticking).
+   * Lateral Tangent Barrier Projection (Zero Teleporting or Sticking).
    * Projects vehicle world position onto closest continuous 3D spline tangent T and binormal N.
    * Clamps ONLY lateralOffset at the guardrail while leaving alongOffset strictly untouched,
    * projects velocity parallel to T, and emits barrier collision sparks at high speed (400+ KPH).
@@ -844,7 +1048,6 @@ export class RapierVehicleWorld {
     const N = isNormalUp ? frame.binormal : frame.normal;
     const S = frame.position;
 
-    // Along-offset is strictly determined by the closest spline projection (never yanked backward)
     const totalLen = this.splineProvider.getTotalLength();
     const forwardAdvance =
       (state.velocity[0] * T[0] + state.velocity[1] * T[1] + state.velocity[2] * T[2]) * dt;
@@ -869,7 +1072,6 @@ export class RapierVehicleWorld {
     const dMax = Math.max(2.0, frame.roadWidth * 0.5 - carHalfWidth);
 
     if (Math.abs(d) > dMax) {
-      // 1. Clamp ONLY lateralOffset (alongOffset sStar / monotonicS is NEVER modified)
       const signD = d >= 0 ? 1 : -1;
       const dClamped = signD * dMax;
       state.lateralOffset = dClamped;
@@ -881,7 +1083,6 @@ export class RapierVehicleWorld {
         S[2] + N[2] * dClamped + U[2] * h,
       ];
 
-      // 2. Project 3D velocity parallel to spline tangent T (strip outward normal velocity along N)
       const vT = state.velocity[0] * T[0] + state.velocity[1] * T[1] + state.velocity[2] * T[2];
       const vU = state.velocity[0] * U[0] + state.velocity[1] * U[1] + state.velocity[2] * U[2];
       const wallGlideFactor = 0.9996;
@@ -899,7 +1100,6 @@ export class RapierVehicleWorld {
       state.speedKph = state.speedMs * 3.6;
       state.yawRad = Math.atan2(T[0], T[2]);
 
-      // 3. Emit Barrier Spark Telemetry (especially at 400+ KPH)
       const scrapeSpeedKph = tangentialSpeedMs * 3.6;
       const sparkIntensity = Math.min(1.0, scrapeSpeedKph / 400.0);
       const contactPointWorld: Vec3Tuple = [

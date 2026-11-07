@@ -306,19 +306,19 @@ describe('Milestone M5: Career Unlock Ladder, Dyno Boot Screen & 4-Tab Paddock U
       expect(pOver.bootRpm).toBe(12000);
     });
 
-    it('scales live subsystem progress bars up to the exact ~400 MB asset pool footprint', () => {
+    it('scales live subsystem progress bars up to the exact ~800 MB asset pool footprint', () => {
       const pFull = bootScreen.setBootProgress(1.0);
-      expect(pFull.subsystems.vehiclesMb).toBe(SUBSYSTEM_MAX_MB.vehicles); // 160.0 MB
-      expect(pFull.subsystems.tracksMb).toBe(SUBSYSTEM_MAX_MB.tracks);     // 160.0 MB
-      expect(pFull.subsystems.skyMb).toBe(SUBSYSTEM_MAX_MB.sky);           // 50.0 MB
-      expect(pFull.subsystems.coreMb).toBe(SUBSYSTEM_MAX_MB.core);         // 30.0 MB
+      expect(pFull.subsystems.vehiclesMb).toBe(SUBSYSTEM_MAX_MB.vehicles); // 320.0 MB
+      expect(pFull.subsystems.tracksMb).toBe(SUBSYSTEM_MAX_MB.tracks);     // 320.0 MB
+      expect(pFull.subsystems.skyMb).toBe(SUBSYSTEM_MAX_MB.sky);           // 100.0 MB
+      expect(pFull.subsystems.coreMb).toBe(SUBSYSTEM_MAX_MB.core);         // 60.0 MB
 
       const totalMb =
         pFull.subsystems.vehiclesMb +
         pFull.subsystems.tracksMb +
         pFull.subsystems.skyMb +
         pFull.subsystems.coreMb;
-      expect(totalMb).toBe(400.0);
+      expect(totalMb).toBe(800.0);
     });
 
     it('triggers V12 startup roar on completeBoot() and operates idempotently', () => {

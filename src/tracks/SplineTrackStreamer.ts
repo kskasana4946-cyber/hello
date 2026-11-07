@@ -302,6 +302,22 @@ export class SplineTrackStreamer implements ISplineProvider {
     const sectorIdx = Math.floor(s / 500);
     const isTunnel = sectorIdx === Math.floor(this.sectorCount / 2) || (this.distanceKm >= 24.0 && sectorIdx === 15);
 
+    let acousticZone: import('../core/types').AcousticZoneId = 'OPEN_AIR';
+    let reverbMix = 0.08;
+    if (isTunnel) {
+      acousticZone = 'TUNNEL_VAULT';
+      reverbMix = 0.55;
+    } else if (this.trackId === 'track_canyon') {
+      acousticZone = 'CANYON_GORGE';
+      reverbMix = 0.38;
+    } else if (this.trackId === 'track_neotokyo') {
+      acousticZone = 'CYBER_URBAN';
+      reverbMix = 0.30;
+    } else if (sectorIdx === 0 || sectorIdx === 1) {
+      acousticZone = 'STADIUM_ARENA';
+      reverbMix = 0.22;
+    }
+
     return {
       s,
       position: [x, y, z],
@@ -313,6 +329,8 @@ export class SplineTrackStreamer implements ISplineProvider {
       roadWidth: this.roadWidth,
       isTunnel,
       crownCamber: 0.015,
+      acousticZone,
+      reverbMix,
     };
   }
 
@@ -524,11 +542,12 @@ export class SplineTrackStreamer implements ISplineProvider {
     });
   }
 
-  private cachedAsphaltTexture: THREE.Texture | null = null;
+  private cachedAsphaltTextures: Map<string, THREE.Texture> = new Map();
 
   private getOrCreateAsphaltTexture(isStartSector: boolean): THREE.Texture | null {
-    if (!isStartSector && this.cachedAsphaltTexture) {
-      return this.cachedAsphaltTexture;
+    const key = `${this.trackId}_${isStartSector ? 'start' : 'norm'}`;
+    if (this.cachedAsphaltTextures.has(key)) {
+      return this.cachedAsphaltTextures.get(key)!;
     }
     if (typeof document === 'undefined') {
       return null;
@@ -539,20 +558,39 @@ export class SplineTrackStreamer implements ISplineProvider {
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // Base dark motorsport tarmac
-    ctx.fillStyle = '#1e222a';
+    // Biome-specific base aggregate tarmac
+    if (this.trackId === 'track_neotokyo') {
+      ctx.fillStyle = '#0a0e17';
+    } else if (this.trackId === 'track_canyon') {
+      ctx.fillStyle = '#2b1f1a';
+    } else if (this.trackId === 'track_alpine') {
+      ctx.fillStyle = '#1e2430';
+    } else {
+      ctx.fillStyle = '#1c2028';
+    }
     ctx.fillRect(0, 0, 512, 512);
 
-    // Fine aggregate asphalt grain
+    // Fine aggregate asphalt grain with biome color tint
     for (let i = 0; i < 3200; i++) {
       const gx = (i * 73) % 512;
       const gy = (i * 137) % 512;
-      const shade = 24 + (i % 22);
-      ctx.fillStyle = `rgb(${shade}, ${shade + 2}, ${shade + 6})`;
+      let r = 24 + (i % 22);
+      let g = r + 2;
+      let b = r + 6;
+      if (this.trackId === 'track_golden_gp') {
+        r += 6; g += 4;
+      } else if (this.trackId === 'track_canyon') {
+        r += 14; g += 4; b -= 4;
+      } else if (this.trackId === 'track_alpine') {
+        r += 8; g += 12; b += 16;
+      } else if (this.trackId === 'track_neotokyo') {
+        b += 12;
+      }
+      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
       ctx.fillRect(gx, gy, 2, 2);
     }
 
-    // Darkened rubbered-in racing line in center-left/right track groove
+    // Racing line rubbering
     const rubberGrad = ctx.createLinearGradient(0, 0, 512, 0);
     rubberGrad.addColorStop(0.0, 'rgba(0,0,0,0)');
     rubberGrad.addColorStop(0.22, 'rgba(8,10,14,0.45)');
@@ -587,17 +625,16 @@ export class SplineTrackStreamer implements ISplineProvider {
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    if (!isStartSector) {
-      this.cachedAsphaltTexture = tex;
-    }
+    this.cachedAsphaltTextures.set(key, tex);
     return tex;
   }
 
   /**
    * Constructs genuine 3D Three.js geometry for a 500m sector:
-   * Continuous spline-hugging road ribbon with crown camber and banking,
-   * spline-hugging red/white FIA sawtooth kerbs, spline-hugging double-wave Armco barriers,
-   * biome terrain shoulders, wind-swayed botanical trees, grandstands, and illuminated tunnels.
+   * Continuous spline-hugging road ribbon with banked normals, 6-strip sculpted terrain shoulders,
+   * continuous red/white FIA sawtooth kerbs, corrugated Armco barriers, multi-branch trees,
+   * signature biome landmarks (turbines/VIP bridges, skyscrapers/holograms, redrock arches, snow peaks),
+   * 25-luminaire lit tunnels, 3-tier grandstands with floodlights, and Sector 0 Pit Building.
    */
   public createSectorMeshGroup(sectorIndex: number): THREE.Group {
     const group = new THREE.Group();
@@ -607,7 +644,7 @@ export class SplineTrackStreamer implements ISplineProvider {
     const sMid = sStart + 250;
     const frame = this.getFrameAtArcLength(sMid);
 
-    // 1. High-Density Road Ribbon Geometry (32 longitudinal steps x 16 cross-section segments)
+    // 1. High-Density Road Ribbon Geometry with Banked Surface Normals
     const longSegments = 32;
     const crossSegments = 16;
     const roadWidth = this.roadWidth;
@@ -621,18 +658,27 @@ export class SplineTrackStreamer implements ISplineProvider {
     for (let i = 0; i <= longSegments; i++) {
       const s = sStart + (i / longSegments) * 500;
       const f = this.getFrameAtArcLength(s);
+      const sinBank = Math.sin(f.bankAngleRad);
+      const cosBank = Math.cos(f.bankAngleRad);
+
       for (let j = 0; j <= crossSegments; j++) {
         const uLat = j / crossSegments; // 0.0 .. 1.0
         const lateralOffset = (uLat - 0.5) * roadWidth;
         // Crown camber + subtle banking tilt
-        const camber = -0.015 * Math.abs(lateralOffset) + Math.sin(f.bankAngleRad) * lateralOffset * 0.15;
+        const camber = -0.015 * Math.abs(lateralOffset) + sinBank * lateralOffset * 0.15;
 
         const vx = f.position[0] + f.normal[0] * lateralOffset;
         const vy = f.position[1] + camber;
         const vz = f.position[2] + f.normal[2] * lateralOffset;
 
         posArray.push(vx, vy, vz);
-        normalArray.push(0, 1, 0);
+
+        // Banked road ribbon surface normal
+        const rNormX = -f.normal[0] * sinBank + f.binormal[0] * cosBank;
+        const rNormY = -f.normal[1] * sinBank + f.binormal[1] * cosBank;
+        const rNormZ = -f.normal[2] * sinBank + f.binormal[2] * cosBank;
+        const normLen = Math.hypot(rNormX, rNormY, rNormZ) || 1;
+        normalArray.push(rNormX / normLen, rNormY / normLen, rNormZ / normLen);
         uvArray.push(uLat, (s - sStart) / 25.0);
       }
     }
@@ -690,7 +736,6 @@ export class SplineTrackStreamer implements ISplineProvider {
         const b = isRed ? 0.15 : 0.98;
 
         const baseVertex = (i * 4);
-        // 4 top/sloped vertices for this kerb segment
         const p0In = [f0.position[0] + f0.normal[0] * latInner, f0.position[1] + 0.03, f0.position[2] + f0.normal[2] * latInner];
         const p0Out = [f0.position[0] + f0.normal[0] * latOuter, f0.position[1] + kerbHeight, f0.position[2] + f0.normal[2] * latOuter];
         const p1In = [f1.position[0] + f1.normal[0] * latInner, f1.position[1] + 0.03, f1.position[2] + f1.normal[2] * latInner];
@@ -739,7 +784,6 @@ export class SplineTrackStreamer implements ISplineProvider {
         const by = f.position[1];
         const bz = f.position[2] + f.normal[2] * latBarrier;
 
-        // Bottom & top rail vertices
         aPos.push(bx, by + 0.12, bz);
         aPos.push(bx, by + barrierHeight, bz);
         aNorm.push(-sideSign * f.normal[0], 0.15, -sideSign * f.normal[2]);
@@ -774,7 +818,7 @@ export class SplineTrackStreamer implements ISplineProvider {
     group.add(buildSplineArmcoMesh(-1, 'ArmcoBarrierLeft'));
     group.add(buildSplineArmcoMesh(1, 'ArmcoBarrierRight'));
 
-    // 4. Continuous Biome Terrain Shoulder Ribbon (Left & Right landscape verge)
+    // 4. 6-Strip Sculpted Terrain Shoulders (Left & Right sculpted verge)
     const shoulderColor =
       this.trackId === 'track_canyon'
         ? 0x7c3a21
@@ -790,37 +834,44 @@ export class SplineTrackStreamer implements ISplineProvider {
       side: THREE.DoubleSide,
     });
 
+    const stripOffsets = [1.15, 3.5, 7.5, 15.0, 28.0, 52.0];
+    const isMountain = this.trackId === 'track_canyon' || this.trackId === 'track_alpine';
+    const stripElevations = isMountain
+      ? [-0.05, -0.45, 0.85, 3.2, 9.5, 26.0]
+      : [-0.05, -0.32, 0.45, 0.15, 1.4, 4.2];
+
     for (const sideSign of [-1, 1] as const) {
       const sPos: number[] = [];
       const sNorm: number[] = [];
       const sIdx: number[] = [];
+
       for (let i = 0; i <= longSegments; i++) {
         const s = sStart + (i / longSegments) * 500;
         const f = this.getFrameAtArcLength(s);
-        const innerLat = sideSign * (halfWidth + 1.15);
-        const outerLat = sideSign * (halfWidth + 46.0);
-        const outerBankY = this.trackId === 'track_canyon' || this.trackId === 'track_alpine' ? 4.2 : -0.6;
+        for (let str = 0; str < stripOffsets.length; str++) {
+          const lat = sideSign * (halfWidth + stripOffsets[str]);
+          const elev = stripElevations[str];
+          sPos.push(
+            f.position[0] + f.normal[0] * lat,
+            f.position[1] + elev,
+            f.position[2] + f.normal[2] * lat
+          );
+          sNorm.push(0, 1, 0);
+        }
+      }
 
-        sPos.push(
-          f.position[0] + f.normal[0] * innerLat,
-          f.position[1] - 0.05,
-          f.position[2] + f.normal[2] * innerLat
-        );
-        sPos.push(
-          f.position[0] + f.normal[0] * outerLat,
-          f.position[1] + outerBankY,
-          f.position[2] + f.normal[2] * outerLat
-        );
-        sNorm.push(0, 1, 0, 0, 1, 0);
-      }
+      const stripCols = stripOffsets.length;
       for (let i = 0; i < longSegments; i++) {
-        const a = i * 2;
-        const b = a + 1;
-        const c = (i + 1) * 2;
-        const d = c + 1;
-        sIdx.push(a, c, b);
-        sIdx.push(b, c, d);
+        for (let str = 0; str < stripCols - 1; str++) {
+          const a = i * stripCols + str;
+          const b = a + 1;
+          const c = (i + 1) * stripCols + str;
+          const d = c + 1;
+          sIdx.push(a, c, b);
+          sIdx.push(b, c, d);
+        }
       }
+
       const sGeom = new THREE.BufferGeometry();
       sGeom.setAttribute('position', new THREE.Float32BufferAttribute(sPos, 3));
       sGeom.setAttribute('normal', new THREE.Float32BufferAttribute(sNorm, 3));
@@ -830,7 +881,7 @@ export class SplineTrackStreamer implements ISplineProvider {
       group.add(sMesh);
     }
 
-    // 5. Illuminated Tunnel Mesh (if tunnel sector)
+    // 5. 25-Luminaire Illuminated Tunnel Mesh (if tunnel sector)
     const yawMid = Math.atan2(frame.tangent[0], frame.tangent[2]);
     if (frame.isTunnel) {
       const tunnelGeom = new THREE.CylinderGeometry(halfWidth + 2.5, halfWidth + 2.5, 500, 18, 1, true, 0, Math.PI);
@@ -846,9 +897,30 @@ export class SplineTrackStreamer implements ISplineProvider {
       tunnel.rotation.y = yawMid;
       tunnel.name = 'IlluminatedTunnel';
       group.add(tunnel);
+
+      // 25 Ceiling Luminaire Fixtures
+      const luminaireMat = new THREE.MeshStandardMaterial({
+        color: 0xfff0aa,
+        emissive: 0xffd23f,
+        emissiveIntensity: 3.2,
+      });
+      const lumGeom = new THREE.BoxGeometry(roadWidth * 0.35, 0.18, 2.5);
+      for (let L = 0; L < 25; L++) {
+        const lumS = sStart + (L / 24) * 480 + 10;
+        const lumFrame = this.getFrameAtArcLength(lumS);
+        const lumMesh = new THREE.Mesh(lumGeom, luminaireMat);
+        lumMesh.position.set(
+          lumFrame.position[0],
+          lumFrame.position[1] + halfWidth + 2.2,
+          lumFrame.position[2]
+        );
+        lumMesh.rotation.y = Math.atan2(lumFrame.tangent[0], lumFrame.tangent[2]);
+        lumMesh.name = `TunnelLuminaire_${L}`;
+        group.add(lumMesh);
+      }
     }
 
-    // 6. Overhead FIA Start/Sector Cantilever Gantry Bridge
+    // 6. Overhead Cantilever Gantry Bridge
     if (sectorIndex === 0 || sectorIndex % 2 === 0) {
       const gantryS = sStart + (sectorIndex === 0 ? 15 : 250);
       const gf = this.getFrameAtArcLength(gantryS);
@@ -881,13 +953,15 @@ export class SplineTrackStreamer implements ISplineProvider {
       group.add(gantryGroup);
     }
 
-    // 7. Botanical Trees & Biome Megastructures (outside track boundaries)
+    // 7. Multi-Branch Botanical Trees & Signature 3D Landmarks
     const treeArchetype = this.biomeSpec.treeArchetype;
     const treeTrunkGeom = new THREE.CylinderGeometry(0.35, 0.55, 5.5, 8);
+    const treeBranchGeom = new THREE.CylinderGeometry(0.18, 0.28, 2.8, 6);
     const treeFoliageGeom =
       treeArchetype === 'saguaro'
         ? new THREE.CylinderGeometry(0.55, 0.65, 8.5, 8)
         : new THREE.ConeGeometry(3.8, 9.5, 8);
+    const branchFoliageGeom = new THREE.SphereGeometry(1.8, 7, 7);
     const treeMat = new THREE.MeshStandardMaterial({
       color:
         treeArchetype === 'snow-spruce'
@@ -912,6 +986,30 @@ export class SplineTrackStreamer implements ISplineProvider {
       foliage.position.y = 8.2;
       treeGroup.add(trunk, foliage);
 
+      // Multi-branch spreaders
+      if (treeArchetype !== 'saguaro') {
+        for (let b = 0; b < 3; b++) {
+          const branchAngle = (b * Math.PI * 2) / 3;
+          const branch = new THREE.Mesh(treeBranchGeom, trunkMat);
+          branch.position.set(Math.cos(branchAngle) * 0.9, 3.8, Math.sin(branchAngle) * 0.9);
+          branch.rotation.z = Math.cos(branchAngle) * 0.65;
+          branch.rotation.x = Math.sin(branchAngle) * 0.65;
+          const subCanopy = new THREE.Mesh(branchFoliageGeom, treeMat);
+          subCanopy.position.set(Math.cos(branchAngle) * 2.2, 4.8, Math.sin(branchAngle) * 2.2);
+          treeGroup.add(branch, subCanopy);
+        }
+      } else {
+        // Saguaro lateral cactus arms
+        for (const armSign of [-1, 1]) {
+          const armH = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.0, 8), treeMat);
+          armH.position.set(armSign * 1.2, 4.2, 0);
+          armH.rotation.z = Math.PI / 2;
+          const armV = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 3.2, 8), treeMat);
+          armV.position.set(armSign * 2.2, 5.6, 0);
+          treeGroup.add(armH, armV);
+        }
+      }
+
       treeGroup.position.set(
         treeFrame.position[0] + treeFrame.normal[0] * treeOffset,
         treeFrame.position[1],
@@ -920,36 +1018,103 @@ export class SplineTrackStreamer implements ISplineProvider {
       treeGroup.name = `Tree_${treeArchetype}_${k}`;
       group.add(treeGroup);
 
-      // Biome-specific mega-scenery every 3rd placement
+      // Biome-specific signature landmarks every 3rd tree placement
       if (k % 3 === 0) {
-        const landmarkDist = side * (halfWidth + 26.0 + (k % 2) * 8.0);
-        if (this.trackId === 'track_neotokyo') {
-          const towerH = 28 + (k % 4) * 14;
+        const landmarkDist = side * (halfWidth + 28.0 + (k % 2) * 8.0);
+        if (this.trackId === 'track_golden_gp') {
+          // Wind Turbine
+          const turbineGroup = new THREE.Group();
+          turbineGroup.name = `WindTurbine_${k}`;
           const tower = new THREE.Mesh(
-            new THREE.BoxGeometry(10, towerH, 10),
+            new THREE.CylinderGeometry(0.8, 1.8, 38, 12),
+            new THREE.MeshStandardMaterial({ color: 0xf1f5f9, metalness: 0.6, roughness: 0.3 })
+          );
+          tower.position.y = 19;
+          const nacelle = new THREE.Mesh(
+            new THREE.BoxGeometry(2.4, 2.2, 5.2),
+            new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.4 })
+          );
+          nacelle.position.set(0, 38, 0);
+          for (let bl = 0; bl < 3; bl++) {
+            const blade = new THREE.Mesh(
+              new THREE.BoxGeometry(0.45, 14.0, 0.15),
+              new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 })
+            );
+            const bladeAngle = (bl * Math.PI * 2) / 3;
+            blade.position.set(Math.cos(bladeAngle) * 7.0, 38 + Math.sin(bladeAngle) * 7.0, 2.8);
+            blade.rotation.z = bladeAngle;
+            turbineGroup.add(blade);
+          }
+          turbineGroup.add(tower, nacelle);
+          turbineGroup.position.set(
+            treeFrame.position[0] + treeFrame.normal[0] * landmarkDist,
+            treeFrame.position[1],
+            treeFrame.position[2] + treeFrame.normal[2] * landmarkDist
+          );
+          group.add(turbineGroup);
+        } else if (this.trackId === 'track_neotokyo') {
+          // Cyberpunk Skyscraper with Hologram
+          const towerH = 45 + (k % 4) * 16;
+          const towerGroup = new THREE.Group();
+          towerGroup.name = `CyberTower_${k}`;
+          const tower = new THREE.Mesh(
+            new THREE.BoxGeometry(14, towerH, 14),
             new THREE.MeshStandardMaterial({
               color: 0x0f172a,
               emissive: k % 2 === 0 ? 0x06b6d4 : 0xd946ef,
-              emissiveIntensity: 0.35,
-              metalness: 0.7,
+              emissiveIntensity: 0.45,
+              metalness: 0.8,
               roughness: 0.2,
             })
           );
-          tower.position.set(
-            treeFrame.position[0] + treeFrame.normal[0] * landmarkDist,
-            treeFrame.position[1] + towerH * 0.5,
-            treeFrame.position[2] + treeFrame.normal[2] * landmarkDist
-          );
-          group.add(tower);
-        } else if (this.trackId === 'track_canyon' || this.trackId === 'track_alpine') {
-          const peakH = 22 + (k % 3) * 12;
-          const peak = new THREE.Mesh(
-            new THREE.ConeGeometry(14, peakH, 6),
+          tower.position.y = towerH * 0.5;
+
+          // Holographic billboard ad floating beside tower
+          const holoAd = new THREE.Mesh(
+            new THREE.PlaneGeometry(12, 8),
             new THREE.MeshStandardMaterial({
-              color: this.trackId === 'track_canyon' ? 0x9a4424 : 0xcbd5e1,
-              roughness: 0.85,
+              color: 0x00f0ff,
+              emissive: 0x00f0ff,
+              emissiveIntensity: 2.5,
+              side: THREE.DoubleSide,
+              transparent: true,
+              opacity: 0.75,
             })
           );
+          holoAd.position.set(0, towerH * 0.75, 8);
+          towerGroup.add(tower, holoAd);
+          towerGroup.position.set(
+            treeFrame.position[0] + treeFrame.normal[0] * landmarkDist,
+            treeFrame.position[1],
+            treeFrame.position[2] + treeFrame.normal[2] * landmarkDist
+          );
+          group.add(towerGroup);
+        } else if (this.trackId === 'track_canyon') {
+          // Redrock Canyon Arch & Hoodoo Pillars
+          const archH = 26 + (k % 3) * 10;
+          const archMesh = new THREE.Mesh(
+            new THREE.TorusGeometry(14, 4.5, 8, 16, Math.PI),
+            new THREE.MeshStandardMaterial({ color: 0x9a4424, roughness: 0.88 })
+          );
+          archMesh.position.set(
+            treeFrame.position[0] + treeFrame.normal[0] * landmarkDist,
+            treeFrame.position[1] + archH * 0.5,
+            treeFrame.position[2] + treeFrame.normal[2] * landmarkDist
+          );
+          group.add(archMesh);
+        } else if (this.trackId === 'track_alpine') {
+          // Alpine Snow Peak & Ski Chalet
+          const peakH = 32 + (k % 3) * 14;
+          const peak = new THREE.Mesh(
+            new THREE.ConeGeometry(18, peakH, 6),
+            new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.75 })
+          );
+          const snowCap = new THREE.Mesh(
+            new THREE.ConeGeometry(9, peakH * 0.45, 6),
+            new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 })
+          );
+          snowCap.position.y = peakH * 0.35;
+          peak.add(snowCap);
           peak.position.set(
             treeFrame.position[0] + treeFrame.normal[0] * landmarkDist,
             treeFrame.position[1] + peakH * 0.45,
@@ -960,32 +1125,108 @@ export class SplineTrackStreamer implements ISplineProvider {
       }
     }
 
-    // 8. Spline-Aligned Multi-Tier Grandstands & Pit Buildings
+    // 8. 3-Tier Crowd Grandstands with Floodlights
     if (sectorIndex % 3 === 0) {
-      const grandstandGeom = new THREE.BoxGeometry(11.0, 8.5, 90.0);
-      const grandstandMat = new THREE.MeshStandardMaterial({
-        color: 0x1e293b,
-        metalness: 0.35,
-        roughness: 0.55,
-      });
-      const grandstand = new THREE.Mesh(grandstandGeom, grandstandMat);
-      grandstand.position.set(
-        frame.position[0] + frame.normal[0] * (halfWidth + 10.5),
-        frame.position[1] + 4.25,
-        frame.position[2] + frame.normal[2] * (halfWidth + 10.5)
+      const grandstandGroup = new THREE.Group();
+      grandstandGroup.name = 'MultiTierGrandstand';
+      grandstandGroup.position.set(
+        frame.position[0] + frame.normal[0] * (halfWidth + 12.0),
+        frame.position[1],
+        frame.position[2] + frame.normal[2] * (halfWidth + 12.0)
       );
-      grandstand.rotation.y = yawMid;
-      grandstand.name = 'MultiTierGrandstand';
+      grandstandGroup.rotation.y = yawMid;
 
-      // Stadium roof canopy over grandstand
+      // 3 Tiers of stepped seating
+      const tierMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.4, roughness: 0.6 });
+      const seatMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 });
+      for (let t = 0; t < 3; t++) {
+        const step = new THREE.Mesh(new THREE.BoxGeometry(4.0, 1.8 * (t + 1), 85.0), tierMat);
+        step.position.set(t * 3.5, 0.9 * (t + 1), 0);
+        const seats = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.35, 84.0), seatMat);
+        seats.position.set(t * 3.5, 1.8 * (t + 1) + 0.18, 0);
+        grandstandGroup.add(step, seats);
+      }
+
+      // Roof Canopy
       const canopy = new THREE.Mesh(
-        new THREE.BoxGeometry(13.5, 0.45, 92.0),
+        new THREE.BoxGeometry(15.0, 0.45, 88.0),
         new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 })
       );
-      canopy.position.set(-1.2, 4.6, 0);
-      grandstand.add(canopy);
+      canopy.position.set(3.5, 9.8, 0);
+      grandstandGroup.add(canopy);
 
-      group.add(grandstand);
+      // Stadium Floodlight Mast
+      const mastMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8 });
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.65, 22.0, 8), mastMat);
+      mast.position.set(12.0, 11.0, 40.0);
+      const floodHead = new THREE.Mesh(
+        new THREE.BoxGeometry(3.8, 2.2, 0.8),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 2.8 })
+      );
+      floodHead.position.set(12.0, 22.0, 40.0);
+      grandstandGroup.add(mast, floodHead);
+
+      group.add(grandstandGroup);
+    }
+
+    // 9. Sector 0 Pit Building (Double-story pit garages, VIP suite, and timing gantry)
+    if (sectorIndex === 0) {
+      const pitGroup = new THREE.Group();
+      pitGroup.name = 'Sector0PitBuilding';
+      const pitFrame = this.getFrameAtArcLength(sStart + 120);
+      pitGroup.position.set(
+        pitFrame.position[0] - pitFrame.normal[0] * (halfWidth + 14.0),
+        pitFrame.position[1],
+        pitFrame.position[2] - pitFrame.normal[2] * (halfWidth + 14.0)
+      );
+      pitGroup.rotation.y = yawMid;
+
+      // Pit Lane Apron
+      const apron = new THREE.Mesh(
+        new THREE.BoxGeometry(8.0, 0.15, 160.0),
+        new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.65 })
+      );
+      apron.position.set(4.0, 0.05, 0);
+      pitGroup.add(apron);
+
+      // 2-Story Pit Garage Structure
+      const garageBuilding = new THREE.Mesh(
+        new THREE.BoxGeometry(14.0, 8.5, 150.0),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.5, roughness: 0.4 })
+      );
+      garageBuilding.position.set(-3.0, 4.25, 0);
+      pitGroup.add(garageBuilding);
+
+      // 6 Pit Garage Doors
+      const doorMat = new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.7, roughness: 0.3 });
+      for (let g = 0; g < 6; g++) {
+        const door = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3.4, 18.0), doorMat);
+        door.position.set(4.1, 1.7, -60 + g * 24);
+        pitGroup.add(door);
+      }
+
+      // Upper VIP Hospitality Glass Balcony
+      const vipGlass = new THREE.Mesh(
+        new THREE.BoxGeometry(0.2, 3.2, 140.0),
+        new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.65, roughness: 0.1 })
+      );
+      vipGlass.position.set(4.1, 5.8, 0);
+      pitGroup.add(vipGlass);
+
+      // LED Leaderboard Tower
+      const ledTower = new THREE.Mesh(
+        new THREE.BoxGeometry(2.5, 14.0, 4.5),
+        new THREE.MeshStandardMaterial({ color: 0x020617, metalness: 0.8 })
+      );
+      ledTower.position.set(4.2, 7.0, -78.0);
+      const ledScreen = new THREE.Mesh(
+        new THREE.BoxGeometry(2.6, 6.0, 4.0),
+        new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 2.2 })
+      );
+      ledScreen.position.set(4.2, 10.0, -78.0);
+      pitGroup.add(ledTower, ledScreen);
+
+      group.add(pitGroup);
     }
 
     return group;

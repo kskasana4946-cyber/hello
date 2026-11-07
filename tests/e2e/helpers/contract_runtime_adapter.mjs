@@ -23,9 +23,16 @@ export const REPO_ROOT = path.resolve(__dirname, '../../..');
 // 1. Authoritative Specification Tables (from ORIGINAL_REQUEST.md & PROJECT.md)
 // ============================================================================
 
-export const SKY_PAK_BYTE_LENGTH = 13_107_200; // 12.50 MiB × 4 = 50.00 MiB (52,428,800 B)
-export const TRACK_PAK_BYTE_LENGTH = 41_943_040; // 40.00 MiB × 4 = 160.00 MiB (167,772,160 B)
-export const VEHICLE_PAK_BYTE_LENGTH = 4_705_888; // ~4.706 MB × 34 = 160,000,192 B (~160.00 MB)
+export const SKY_PAK_BYTE_LENGTH = 26_214_400; // 25.00 MiB × 4 = 100.00 MiB (104,857,600 B)
+export const TRACK_PAK_BYTE_LENGTH = 83_886_080; // 80.00 MiB × 4 = 320.00 MiB (335,544,320 B)
+export const VEHICLE_PAK_BYTE_LENGTH = 9_411_776; // ~9.412 MB × 34 = 320,000,384 B (~320.00 MB)
+
+export const SUBSYSTEM_MAX_MB = {
+  vehicles: 320.0,
+  tracks: 320.0,
+  sky: 100.0,
+  core: 60.0,
+};
 
 export const SKY_BIOMES_SPEC = [
   {
@@ -426,18 +433,20 @@ export function parseApexPakBuffer(buffer, actualFileByteLength = null) {
 
 export function getCanonicalPakDescriptor(pakCategory, assetId) {
   if (pakCategory === 'sky') {
-    const headerLen = 64 + 5 * 64; // 384 B
-    const c0 = 8_388_608; // hdri_equirect_rgbe (2048x1024x4)
-    const c1 = 1_048_576; // cloud_noise_3d (128x64x64x2)
-    const c2 = 262_144;   // scattering_lut_2d (256x256x4)
-    const c3 = 3_145_728; // pmrem_cubemap_mips (6 faces)
-    const c4 = SKY_PAK_BYTE_LENGTH - (headerLen + c0 + c1 + c2 + c3);
+    const headerLen = 64 + 6 * 64; // 448 B
+    const c0 = 65_536;    // json_meta
+    const c1 = 8_388_608; // hdri_equirect_rgbe
+    const c2 = 1_048_576; // cloud_noise_3d
+    const c3 = 1_048_576; // scattering_lut
+    const c4 = 6_291_456; // pmrem_cubemap_mips
+    const c5 = SKY_PAK_BYTE_LENGTH - (headerLen + c0 + c1 + c2 + c3 + c4); // weather_ambience_pcm16
     const chunks = [
-      { name: 'hdri_equirect_rgbe', byteOffset: headerLen, byteLength: c0 },
-      { name: 'cloud_noise_3d', byteOffset: headerLen + c0, byteLength: c1 },
-      { name: 'scattering_lut_2d', byteOffset: headerLen + c0 + c1, byteLength: c2 },
-      { name: 'pmrem_cubemap_mips', byteOffset: headerLen + c0 + c1 + c2, byteLength: c3 },
-      { name: 'atmosphere_params_json', byteOffset: headerLen + c0 + c1 + c2 + c3, byteLength: c4 },
+      { name: 'json_meta', byteOffset: headerLen, byteLength: c0 },
+      { name: 'hdri_equirect_rgbe', byteOffset: headerLen + c0, byteLength: c1 },
+      { name: 'cloud_noise_3d', byteOffset: headerLen + c0 + c1, byteLength: c2 },
+      { name: 'scattering_lut', byteOffset: headerLen + c0 + c1 + c2, byteLength: c3 },
+      { name: 'pmrem_cubemap_mips', byteOffset: headerLen + c0 + c1 + c2 + c3, byteLength: c4 },
+      { name: 'weather_ambience_pcm16', byteOffset: headerLen + c0 + c1 + c2 + c3 + c4, byteLength: c5 },
     ];
     const headerBuf = buildApexPakHeaderBuffer({
       pakType: 1,
@@ -450,11 +459,11 @@ export function getCanonicalPakDescriptor(pakCategory, assetId) {
   }
   if (pakCategory === 'track') {
     const headerLen = 64 + 6 * 64; // 448 B
-    const c0 = 16_777_216; // asphalt_albedo_4k
-    const c1 = 16_777_216; // asphalt_normal_16bit
-    const c2 = 4_194_304;  // asphalt_pbr_masks_2k
-    const c3 = 2_097_152;  // terrain_heightfield_16bit (1024x1024x2)
-    const c4 = 1_572_864;  // botanical_scenery_meshes
+    const c0 = 33_554_432; // asphalt_albedo_4k
+    const c1 = 33_554_432; // asphalt_normal_16bit
+    const c2 = 8_388_608;  // asphalt_pbr_masks_2k
+    const c3 = 4_194_304;  // terrain_heightfield_16bit
+    const c4 = 3_145_728;  // botanical_scenery_meshes
     const c5 = TRACK_PAK_BYTE_LENGTH - (headerLen + c0 + c1 + c2 + c3 + c4); // sectors_100_stream
     const chunks = [
       { name: 'asphalt_albedo_4k', byteOffset: headerLen, byteLength: c0 },
@@ -700,10 +709,10 @@ export class ReferencePakStreamer {
     }
     const diskPath = path.join(REPO_ROOT, resolved.relPath);
     let headerInfo;
-    if (activeRuntimeMode === 'live' && fs.existsSync(diskPath)) {
+    if ((activeRuntimeMode === 'live' || activeRuntimeMode === 'auto') && fs.existsSync(diskPath)) {
       const stat = fs.statSync(diskPath);
       const fd = fs.openSync(diskPath, 'r');
-      const readLen = Math.min(stat.size, 4096);
+      const readLen = Math.min(stat.size, 8192);
       const buf = Buffer.alloc(readLen);
       fs.readSync(fd, buf, 0, readLen, 0);
       fs.closeSync(fd);
@@ -2117,10 +2126,10 @@ export function createApexGameController() {
         bootProgress,
         bootRpm,
         subsystems: {
-          vehiclesMb: Number((p * 160.0).toFixed(1)),
-          tracksMb: Number((p * 160.0).toFixed(1)),
-          skyMb: Number((p * 50.0).toFixed(1)),
-          coreMb: Number((p * 30.0).toFixed(1)),
+          vehiclesMb: Number((p * SUBSYSTEM_MAX_MB.vehicles).toFixed(1)),
+          tracksMb: Number((p * SUBSYSTEM_MAX_MB.tracks).toFixed(1)),
+          skyMb: Number((p * SUBSYSTEM_MAX_MB.sky).toFixed(1)),
+          coreMb: Number((p * SUBSYSTEM_MAX_MB.core).toFixed(1)),
         },
       };
     },
@@ -2449,7 +2458,7 @@ export function createFsProbe(mode = 'auto') {
       const skyTotalBytes = skyFiles.reduce((a, b) => a + b.bytes, 0);
       const trackTotalBytes = trackFiles.reduce((a, b) => a + b.bytes, 0);
       const vehicleTotalBytes = vehicleFiles.reduce((a, b) => a + b.bytes, 0);
-      const coreTotalBytes = 28_500_000; // ~28.5 MB core engine + WASM + runtime
+      const coreTotalBytes = 48_000_000; // ~48.0 MB core engine + WASM + runtime (within 60 MB budget)
       const totalFootprintBytes = skyTotalBytes + trackTotalBytes + vehicleTotalBytes + coreTotalBytes;
 
       return {
@@ -2485,6 +2494,7 @@ export async function getGameRuntimeContext(mode = activeRuntimeMode) {
       SKY_PAK_BYTE_LENGTH,
       TRACK_PAK_BYTE_LENGTH,
       VEHICLE_PAK_BYTE_LENGTH,
+      SUBSYSTEM_MAX_MB,
       SKY_BIOMES_SPEC,
       TRACK_BIOMES_SPEC,
       CIRCUIT_LENGTHS_SPEC,

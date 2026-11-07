@@ -386,6 +386,9 @@ export function initApexGame(): any {
   raceHUD.onCycleCameraCallback = () => {
     controller.cycleCameraMode();
   };
+  raceHUD.onToggleAudioCallback = () => {
+    controller.toggleAudioMute();
+  };
 
   // 4. Three.js Scene Setup, 3-Point Studio Lighting & Showroom Stage
   const scene = new THREE.Scene();
@@ -638,6 +641,9 @@ export function initApexGame(): any {
     suspensionStiffness: 1.0,
   };
 
+  let isAudioMuted = false;
+  let savedMasterVolume = 0.85;
+
   // Interactive Showroom Orbit Camera State
   let showroomOrbitYaw = 0.55;
   let showroomOrbitPitch = 0.28;
@@ -667,6 +673,8 @@ export function initApexGame(): any {
         controller.pressTabKey('KeyE');
       } else if (e.code === 'KeyC') {
         controller.cycleCameraMode();
+      } else if (e.code === 'KeyM') {
+        controller.toggleAudioMute();
       } else if (e.code === 'Digit1') {
         controller.setCameraMode('CHASE');
       } else if (e.code === 'Digit2') {
@@ -686,6 +694,9 @@ export function initApexGame(): any {
 
     // Mouse-drag orbit & scroll-wheel zoom for Showroom 3D camera
     window.addEventListener('pointerdown', (e) => {
+      // Audio resume on any user click / tap
+      synthEngine.resumeAudio();
+
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'BUTTON' || target.tagName === 'SELECT' || target.closest('#paddock-tab-content') || target.closest('#docked-launch-bar') || target.closest('header') || target.closest('nav'))) {
         return;
@@ -748,10 +759,10 @@ export function initApexGame(): any {
         bootProgress,
         bootRpm,
         subsystems: {
-          vehiclesMb: Number((p * 160.0).toFixed(1)),
-          tracksMb: Number((p * 160.0).toFixed(1)),
-          skyMb: Number((p * 50.0).toFixed(1)),
-          coreMb: Number((p * 30.0).toFixed(1)),
+          vehiclesMb: Number((p * 320.0).toFixed(1)),
+          tracksMb: Number((p * 320.0).toFixed(1)),
+          skyMb: Number((p * 100.0).toFixed(1)),
+          coreMb: Number((p * 60.0).toFixed(1)),
         },
       };
     },
@@ -965,6 +976,17 @@ export function initApexGame(): any {
       return this.getState();
     },
 
+    toggleAudioMute() {
+      isAudioMuted = !isAudioMuted;
+      if (isAudioMuted) {
+        savedMasterVolume = synthEngine.masterVolume || 0.85;
+        synthEngine.setMasterVolume(0.0);
+      } else {
+        synthEngine.setMasterVolume(savedMasterVolume);
+      }
+      return isAudioMuted;
+    },
+
     simulateWinRace(options: any = {}) {
       let opts: any = {};
       if (typeof options === 'number') {
@@ -1022,6 +1044,7 @@ export function initApexGame(): any {
     setModStudioTuning(tuning: Partial<ModStudioTuning> = {}) {
       currentTuning = { ...currentTuning, ...tuning };
       paddockUI.setModStudioTuning(currentTuning);
+      physicsWorld.setVehicleTuning('player', currentTuning);
       return currentTuning;
     },
 
@@ -1062,6 +1085,12 @@ export function initApexGame(): any {
         drsActive: pState?.drsActive ?? false,
         brakeTempCelsius: Math.round((pState?.brakeTempCelsius ?? 20) * 10) / 10,
         sectorSplits: [...aiDirector.sectorSplits],
+        lateralG: pState?.lateralG ?? 0.0,
+        longitudinalG: pState?.longitudinalG ?? 0.0,
+        tireTemps: pState?.wheels ? (pState.wheels.map((w: any) => w.tireTempCelsius) as any) : [85, 85, 85, 85],
+        kerbRumbleIntensity: pState?.kerbRumbleIntensity ?? 0.0,
+        slipstreamActive: pState?.slipstreamActive ?? false,
+        audioMuted: isAudioMuted,
       };
 
       if (activeCockpit && typeof activeCockpit.updateCockpitTelemetry === 'function') {
@@ -1151,6 +1180,15 @@ export function initApexGame(): any {
         nitro,
       });
 
+      // Update leaders for slipstream wake calculation
+      physicsWorld.setLeaders(
+        aiDirector.racers.map((r) => ({
+          alongOffset: r.alongOffset,
+          lateralOffset: r.lateralOffset,
+          speedMs: r.speedKph / 3.6,
+        }))
+      );
+
       // Step physics at 240Hz sub-steps
       physicsWorld.step(dt);
       const pState: PhysicsVehicleState = (physicsWorld as any).state;
@@ -1189,6 +1227,25 @@ export function initApexGame(): any {
       const currentSpec = getVehicleById(selectedVehicleId) || VEHICLE_ROSTER[0];
       synthEngine.updateEngineAudio(currentSpec, pState.rpm, throttle);
 
+      // Tunnel Reverb Send
+      const curFrame = splineStreamer.getFrameAtArcLength(pState.alongOffset);
+      synthEngine.setTunnelReverb(Boolean(curFrame.isTunnel && !pState.airborne));
+
+      // Kerb Rumble SFX
+      if (pState.kerbRumbleIntensity > 0.05) {
+        synthEngine.playKerbRumble(pState.kerbRumbleIntensity, pState.speedKph);
+      }
+
+      // Slipstream Wind SFX
+      if (pState.slipstreamActive) {
+        synthEngine.playSlipstreamWind(pState.slipstreamDraftRatio);
+      }
+
+      // Shift Shock SFX
+      if (pState.shiftShockRemainingSec > 0 && pState.lastShiftType) {
+        synthEngine.playGearShift(pState.lastShiftType, Boolean(typeof currentSpec.archetype === 'string' && currentSpec.archetype.includes('turbo')));
+      }
+
       // Tire Skid SFX & Realistic Tire Smoke VFX if drifting or braking hard
       if ((brake > 0.5 || handbrake || Math.abs(steer) > 0.65) && pState.speedKph > 45) {
         if (brake > 0.5 || handbrake) {
@@ -1215,8 +1272,10 @@ export function initApexGame(): any {
       }
 
       // Realistic Orange Barrier Sparks on Wall Scrape
-      const isScraping = Boolean((pState as any).scrapingBarrier) || Math.abs(pState.lateralOffset) >= 9.6;
+      const isScraping = Boolean((pState as any).scrapingBarrier) || Math.abs(pState.lateralOffset) >= 9.6 || pState.barrierContact;
       if (isScraping && pState.speedKph > 25) {
+        synthEngine.playBarrierScrape(Math.min(1.0, pState.speedKph / 250.0), pState.lateralOffset >= 0 ? 'RIGHT' : 'LEFT');
+
         const carPos = new THREE.Vector3(...pState.position);
         const rightVec = new THREE.Vector3(...pState.right);
         const sideSign = pState.lateralOffset >= 0 ? 1.0 : -1.0;

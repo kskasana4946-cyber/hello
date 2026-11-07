@@ -538,4 +538,187 @@ describe('Part 4 / Milestone M4: 34 Modular Vehicle Paks & 3D Cockpits', () => {
       expect(model.wheelSpinRad).toBeGreaterThan(0.0);
     });
   });
+
+  // ==========================================================================
+  // 5. 34 BESPOKE VISUAL ARCHETYPES & SIGNATURE GEOMETRY (F33)
+  // ==========================================================================
+  describe('F33: 34 Bespoke Visual Archetypes & Signature Geometry', () => {
+    it('verifies Scooter (Car #1) 2-wheel inline geometry, rider silhouette, and hidden helper wheels', () => {
+      const scooterSpec = getVehicleById('scooter')!;
+      const model = buildVehicle(scooterSpec, 0);
+
+      // Inline front and rear wheels along x = 0
+      expect(model.wheels.fl.group.position.x).toBe(0);
+      expect(model.wheels.rl.group.position.x).toBe(0);
+      expect(model.wheels.fl.group.position.z).toBeGreaterThan(0.5);
+      expect(model.wheels.rl.group.position.z).toBeLessThan(-0.5);
+
+      // Helper wheels hidden for physics & test contract compatibility
+      expect(model.wheels.fr.group.visible).toBe(false);
+      expect(model.wheels.rr.group.visible).toBe(false);
+      expect(model.wheels.fr.group.position.y).toBe(-10);
+      expect(model.wheels.rr.group.position.y).toBe(-10);
+
+      // 4 brake discs and materials present
+      expect(model.brakeDiscs.length).toBe(4);
+      expect(model.brakeDiscMaterials.length).toBe(4);
+
+      // 3D Rider Silhouette with helmet exists in bodyworkGroup
+      const rider = model.bodyworkGroup.getObjectByName('ScooterRiderSilhouette');
+      expect(rider).toBeDefined();
+      expect(rider).toBeInstanceOf(THREE.Group);
+      expect(rider!.children.length).toBeGreaterThanOrEqual(3); // Torso, helmet, visor, arms
+
+      // Cockpit interior: motorcycle handlebars
+      expect(model.cockpitInterior.steeringWheelGroup.children.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('verifies Bugatti W16 (Car #27) horseshoe grille, sweeping C-line contour, center spine, and quad exhausts', () => {
+      const hyperSpec = getVehicleById('hyper')!;
+      const model = buildVehicle(hyperSpec, 0);
+
+      // Check for horseshoe grille, C-lines, and center spine in bodyworkGroup
+      let foundHorseshoe = false;
+      let cLineCount = 0;
+      let centerSpineFound = false;
+
+      model.bodyworkGroup.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          // Check horseshoe arch geometry
+          if (obj.geometry instanceof THREE.TorusGeometry && obj.position.y > 0.05 && obj.position.y < 0.15) {
+            foundHorseshoe = true;
+          }
+          // Check center dorsal crease (thin strip along z)
+          if (obj.geometry instanceof THREE.BoxGeometry) {
+            const params = (obj.geometry as THREE.BoxGeometry).parameters;
+            if (params.width < 0.03 && params.depth > 3.0) {
+              centerSpineFound = true;
+            }
+          }
+        }
+        if (obj instanceof THREE.Group && obj.children.length >= 2) {
+          // Flank C-line group
+          if (Math.abs(obj.position.x) > 0.9 && Math.abs(obj.position.x) < 1.1) {
+            cLineCount++;
+          }
+        }
+      });
+
+      expect(foundHorseshoe).toBe(true);
+      expect(centerSpineFound).toBe(true);
+      expect(cLineCount).toBe(2); // Left and Right C-lines
+      expect(model.wingMesh.name).toBe('ActiveAirfoilBlade');
+    });
+
+    it('verifies Formula 1 (Car #32) exposed wishbones, titanium HALO, and F1 butterfly wheel', () => {
+      const f1Spec = getVehicleById('f1')!;
+      const model = buildVehicle(f1Spec, 0);
+
+      // Check for exposed suspension wishbones and HALO safety hoop
+      let wishboneCount = 0;
+      let haloFound = false;
+
+      model.bodyworkGroup.traverse((obj) => {
+        if (obj instanceof THREE.Group && obj.position.y > 0.7 && Math.abs(obj.position.z - 0.25) < 0.1) {
+          haloFound = true;
+        }
+        if (obj instanceof THREE.Group && Math.abs(obj.position.x) > 0.35 && Math.abs(obj.position.x) < 0.55) {
+          wishboneCount++;
+        }
+      });
+
+      expect(haloFound).toBe(true);
+      expect(wishboneCount).toBeGreaterThanOrEqual(4); // 4 corners double-wishbones
+
+      // F1 Cockpit butterfly steering yoke
+      expect(model.cockpitInterior.steeringWheelMesh.name).toBe('SteeringWheel');
+      expect(model.cockpitInterior.shiftLeds.length).toBe(9);
+    });
+
+    it('verifies Heavy Commercial: Semi Rig (#14) twin chrome stacks and dually rear wheels', () => {
+      const semiSpec = getVehicleById('semi_rig')!;
+      const model = buildVehicle(semiSpec, 0);
+
+      // Check twin vertical exhaust stacks
+      let stackCount = 0;
+      model.bodyworkGroup.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.geometry instanceof THREE.CylinderGeometry) {
+          const params = (obj.geometry as THREE.CylinderGeometry).parameters;
+          if (params.height > 2.0) {
+            stackCount++;
+          }
+        }
+      });
+      expect(stackCount).toBe(2); // Left and right twin chrome vertical exhaust stacks
+
+      // Rear wheels have dually extra tires
+      expect(model.wheels.rl.group.children.length).toBeGreaterThan(1);
+      expect(model.wheels.rr.group.children.length).toBeGreaterThan(1);
+    });
+
+    it('verifies Baja Truck (#09) prerunner bumper, KC spotlights, and bed-mounted dual spare tires', () => {
+      const truckSpec = getVehicleById('truck')!;
+      const model = buildVehicle(truckSpec, 0);
+
+      // Check for 2 spare tires mounted in bed
+      let spareTireCount = 0;
+      model.bodyworkGroup.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.geometry instanceof THREE.CylinderGeometry) {
+          const params = (obj.geometry as THREE.CylinderGeometry).parameters;
+          if (params.radiusTop > 0.4 && params.radiusBottom > 0.4 && obj.position.z < -1.0) {
+            spareTireCount++;
+          }
+        }
+      });
+      expect(spareTireCount).toBe(2); // Dual 37-inch spare wheels in bed cage
+    });
+
+    it('verifies Porsche GT3 RS (#18) front fender louvers and swan-neck DRS wing', () => {
+      const gt3Spec = getVehicleById('porsche_gt3')!;
+      const model = buildVehicle(gt3Spec, 0);
+
+      // Check for fender cooling louvers
+      let louverCount = 0;
+      model.bodyworkGroup.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.geometry instanceof THREE.BoxGeometry) {
+          const params = (obj.geometry as THREE.BoxGeometry).parameters;
+          if (params.height < 0.02 && params.depth < 0.05 && params.width > 0.15) {
+            louverCount++;
+          }
+        }
+      });
+      expect(louverCount).toBeGreaterThanOrEqual(8); // 4 gills on each front fender
+      expect(model.wingGroup.position.y).toBeGreaterThan(1.2); // High swan-neck wing
+    });
+
+    it('verifies that ALL 34 roster vehicles build successfully with complete Three.js hierarchy', () => {
+      const allSpecs = getAllVehicles();
+      expect(allSpecs.length).toBe(34);
+
+      for (const spec of allSpecs) {
+        const model = buildVehicle(spec, 0);
+
+        expect(model.rootGroup, `Car ${spec.index} (${spec.id}) missing rootGroup`).toBeInstanceOf(THREE.Group);
+        expect(model.bodyMesh, `Car ${spec.index} (${spec.id}) missing bodyMesh`).toBeInstanceOf(THREE.Mesh);
+        expect(model.splitterMesh, `Car ${spec.index} (${spec.id}) missing splitterMesh`).toBeInstanceOf(THREE.Mesh);
+        expect(model.diffuserMesh, `Car ${spec.index} (${spec.id}) missing diffuserMesh`).toBeInstanceOf(THREE.Mesh);
+        expect(model.wingMesh, `Car ${spec.index} (${spec.id}) missing wingMesh`).toBeInstanceOf(THREE.Mesh);
+
+        // 4 wheels and brakes
+        expect(model.wheels.fl, `Car ${spec.index} missing fl wheel`).toBeDefined();
+        expect(model.wheels.fr, `Car ${spec.index} missing fr wheel`).toBeDefined();
+        expect(model.wheels.rl, `Car ${spec.index} missing rl wheel`).toBeDefined();
+        expect(model.wheels.rr, `Car ${spec.index} missing rr wheel`).toBeDefined();
+        expect(model.brakeDiscs.length).toBe(4);
+        expect(model.brakeDiscMaterials.length).toBe(4);
+
+        // Cockpit interior
+        expect(model.cockpitInterior, `Car ${spec.index} missing cockpit`).toBeDefined();
+        expect(model.cockpitInterior.telemetryScreenMesh).toBeInstanceOf(THREE.Mesh);
+        expect(model.cockpitInterior.shiftLeds.length).toBe(9);
+        expect(model.cockpitInterior.cockpitCameraAnchor.position.y).toBeGreaterThan(1.0);
+      }
+    });
+  });
 });
+

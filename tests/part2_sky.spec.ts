@@ -58,10 +58,10 @@ describe('Part 2 Sky, Volumetric Cloud & HDRI Atmosphere Paks (F10–F14)', () =
       expect(content).toContain('PIL');
       expect(content).not.toMatch(/import\s+scipy/);
       expect(content).not.toMatch(/from\s+scipy/);
-      expect(content).toContain('TARGET_PAK_BYTES = 13_107_200');
+      expect(content).toContain('TARGET_PAK_BYTES = 26_214_400');
     });
 
-    it('verifies all 4 canonical sky .pak files exist with EXACTLY 13,107,200 bytes each', () => {
+    it('verifies all 4 canonical sky .pak files exist with EXACTLY 26,214,400 bytes each', () => {
       let totalCanonicalBytes = 0;
 
       for (const skyId of CANONICAL_SKIES) {
@@ -69,15 +69,15 @@ describe('Part 2 Sky, Volumetric Cloud & HDRI Atmosphere Paks (F10–F14)', () =
         expect(fs.existsSync(filePath), `Expected file ${filePath} to exist`).toBe(true);
 
         const stats = fs.statSync(filePath);
-        expect(stats.size).toBe(SKY_PAK_TARGET_BYTES); // Exactly 13,107,200 bytes (12.50 MiB)
+        expect(stats.size).toBe(SKY_PAK_TARGET_BYTES); // Exactly 26,214,400 bytes (25.00 MiB)
         totalCanonicalBytes += stats.size;
       }
 
-      // Total canonical footprint = exactly 52,428,800 bytes (50.00 MiB)
-      expect(totalCanonicalBytes).toBe(52_428_800);
+      // Total canonical footprint = exactly 104,857,600 bytes (100.00 MiB)
+      expect(totalCanonicalBytes).toBe(104_857_600);
     });
 
-    it('verifies all 4 sky aliases (sky_01.pak .. sky_04.pak) exist and resolve to 13,107,200 bytes', () => {
+    it('verifies all 4 sky aliases (sky_01.pak .. sky_04.pak) exist and resolve to 26,214,400 bytes', () => {
       for (const alias of ['sky_01', 'sky_02', 'sky_03', 'sky_04']) {
         const aliasPath = path.join(SKY_PAKS_DIR, `${alias}.pak`);
         expect(fs.existsSync(aliasPath), `Expected alias ${aliasPath} to exist`).toBe(true);
@@ -102,13 +102,13 @@ describe('Part 2 Sky, Volumetric Cloud & HDRI Atmosphere Paks (F10–F14)', () =
         expect(header.version).toBe(APEX_PAK_VERSION);
         expect(header.pakType).toBe(PakType.SKY);
         expect(header.totalByteLength).toBe(SKY_PAK_TARGET_BYTES);
-        expect(header.entryCount).toBe(5);
+        expect(header.entryCount).toBe(6);
         expect(header.sectorCount).toBe(0);
         expect(header.assetId).toBe(skyId);
 
         // TOC check
         const toc = parsePakToc(arrayBuf, header.entryCount);
-        expect(toc.length).toBe(5);
+        expect(toc.length).toBe(6);
 
         const chunkNames = toc.map((t) => t.name);
         expect(chunkNames).toContain('json_meta');
@@ -116,6 +116,7 @@ describe('Part 2 Sky, Volumetric Cloud & HDRI Atmosphere Paks (F10–F14)', () =
         expect(chunkNames).toContain('cloud_noise_3d');
         expect(chunkNames).toContain('scattering_lut');
         expect(chunkNames).toContain('pmrem_cubemap_mips');
+        expect(chunkNames).toContain('weather_ambience_pcm16');
 
         // All TOC entries must be 64-byte aligned
         for (const entry of toc) {
@@ -132,6 +133,7 @@ describe('Part 2 Sky, Volumetric Cloud & HDRI Atmosphere Paks (F10–F14)', () =
         expect((bundle.metadata as { assetId: string }).assetId).toBe(skyId);
         expect(bundle.chunks.has('hdri_equirect_rgbe')).toBe(true);
         expect(bundle.chunks.has('cloud_noise_3d')).toBe(true);
+        expect(bundle.chunks.has('weather_ambience_pcm16')).toBe(true);
       }
     });
   });

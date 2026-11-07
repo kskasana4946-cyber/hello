@@ -4,10 +4,10 @@
 // Operates seamlessly in DOM browser environments and headless/Node testing environments.
 
 export interface SubsystemProgressMb {
-  vehiclesMb: number; // 0..160.0 MB
-  tracksMb: number;   // 0..160.0 MB
-  skyMb: number;      // 0..50.0 MB
-  coreMb: number;     // 0..30.0 MB
+  vehiclesMb: number; // 0..320.0 MB
+  tracksMb: number;   // 0..320.0 MB
+  skyMb: number;      // 0..100.0 MB
+  coreMb: number;     // 0..60.0 MB
 }
 
 export interface BootProgressState {
@@ -18,10 +18,10 @@ export interface BootProgressState {
 }
 
 export const SUBSYSTEM_MAX_MB = {
-  vehicles: 160.0,
-  tracks: 160.0,
-  sky: 50.0,
-  core: 30.0,
+  vehicles: 320.0,
+  tracks: 320.0,
+  sky: 100.0,
+  core: 60.0,
 } as const;
 
 export class BootLoadingScreen {
@@ -158,14 +158,14 @@ export class BootLoadingScreen {
     const subContainer = document.createElement('div');
     subContainer.style.cssText = 'width: 360px; max-width: 90vw; margin-bottom: 24px;';
     subContainer.innerHTML = `
-      <div style="font-size: 11px; letter-spacing: 2px; color: #64748b; font-weight: 700; margin-bottom: 10px; text-transform: uppercase;">Streaming ~400 MB Modular .PAK Footprint</div>
+      <div style="font-size: 11px; letter-spacing: 2px; color: #64748b; font-weight: 700; margin-bottom: 10px; text-transform: uppercase;">Streaming ~800 MB Modular .PAK Footprint</div>
     `;
 
     const subsystems = [
-      { id: 'vehicles', label: '34 Vehicle Roster (.pak)', maxMb: 160.0 },
-      { id: 'tracks', label: 'Track Biomes & Splines (.pak)', maxMb: 160.0 },
-      { id: 'sky', label: 'Sky Atmospheres & Clouds (.pak)', maxMb: 50.0 },
-      { id: 'core', label: 'Core Engine & Shaders', maxMb: 30.0 },
+      { id: 'vehicles', label: '34 Vehicle Roster (.pak)', maxMb: 320.0 },
+      { id: 'tracks', label: 'Track Biomes & Splines (.pak)', maxMb: 320.0 },
+      { id: 'sky', label: 'Sky Atmospheres & Clouds (.pak)', maxMb: 100.0 },
+      { id: 'core', label: 'Core Engine & Shaders', maxMb: 60.0 },
     ];
 
     for (const sub of subsystems) {

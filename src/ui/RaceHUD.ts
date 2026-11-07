@@ -1,7 +1,9 @@
 // src/ui/RaceHUD.ts
-// In-Race 2D Telemetry Cockpit HUD Overlay (M5: F31/F36/LiveCockpitTelemetry)
+// In-Race 2D Telemetry Cockpit HUD Overlay (M5, M6, M8)
 // Digital Speedometer (KPH), Gear, 0–15k RPM Tachometer Arc, Lap Delta, Leaderboard,
 // Nitro Meter, DRS Active Status, 1,000°C Carbon-Ceramic Brake Glow, Sector Splits & Minimap.
+// Features: Live G-Force & 4-Corner Tire Temp telemetry pill, KERB RUMBLE & SLIPSTREAM ACTIVE badges,
+// and interactive [M] AUDIO: ON / MUTE toggle button.
 
 import { LiveCockpitTelemetry } from '../core/types';
 
@@ -22,9 +24,20 @@ export class RaceHUD {
   private minimapCanvas: HTMLCanvasElement | null = null;
   private minimapCtx: CanvasRenderingContext2D | null = null;
 
+  // Next-Gen additions
+  private audioBtnElement: HTMLElement | null = null;
+  private gforceElement: HTMLElement | null = null;
+  private tireFlElement: HTMLElement | null = null;
+  private tireFrElement: HTMLElement | null = null;
+  private tireRlElement: HTMLElement | null = null;
+  private tireRrElement: HTMLElement | null = null;
+  private kerbBadgeElement: HTMLElement | null = null;
+  private slipstreamBadgeElement: HTMLElement | null = null;
+
   public currentTelemetry: LiveCockpitTelemetry | null = null;
   public onReturnToPaddockCallback?: () => void;
   public onCycleCameraCallback?: () => void;
+  public onToggleAudioCallback?: () => void;
   private playerTrackFraction = 0.0;
   private rivalTrackFractions: number[] = [];
 
@@ -111,6 +124,9 @@ export class RaceHUD {
       <button id="hud-btn-camera" style="background: rgba(0,240,255,0.16); color: #00f0ff; border: 1px solid rgba(0,240,255,0.4); border-radius: 4px; padding: 5px 10px; font-size: 11px; font-weight: 800; cursor: pointer;">
         [C] CAMERA VIEW
       </button>
+      <button id="hud-btn-audio" style="background: rgba(34,197,94,0.2); color: #4ade80; border: 1px solid rgba(74,222,128,0.4); border-radius: 4px; padding: 5px 10px; font-size: 11px; font-weight: 800; cursor: pointer;">
+        [M] AUDIO: ON
+      </button>
       <span style="font-size: 11px; color: #94a3b8; font-weight: 600; padding-left: 4px;">
         WASD / Arrows: Drive &bull; Space: Drift &bull; Shift: ERS Boost
       </span>
@@ -131,7 +147,7 @@ export class RaceHUD {
 
     this.rootElement.appendChild(topBar);
 
-    // 2. BOTTOM BAR: Minimap (Left) & Instrument Cluster (Right)
+    // 2. BOTTOM BAR: Minimap (Left), Telemetry Pill (Center) & Instrument Cluster (Right)
     const bottomBar = document.createElement('div');
     bottomBar.style.cssText = 'display: flex; justify-content: space-between; align-items: flex-end;';
 
@@ -150,6 +166,42 @@ export class RaceHUD {
     this.minimapCtx = this.minimapCanvas.getContext('2d');
     mapWrap.appendChild(this.minimapCanvas);
     bottomBar.appendChild(mapWrap);
+
+    // Center Telemetry Pill: G-Forces, 4-Corner Tire Temps & Dynamic Badges
+    const centerPill = document.createElement('div');
+    centerPill.id = 'hud-center-pill';
+    centerPill.style.cssText = `
+      background: rgba(2,6,23,0.85);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 12px;
+      padding: 8px 16px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    `;
+    centerPill.innerHTML = `
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <div id="hud-badge-kerb" style="display: none; font-size: 9px; font-weight: 900; letter-spacing: 1px; padding: 2px 6px; border-radius: 3px; background: #f59e0b; color: #000; box-shadow: 0 0 10px rgba(245,158,11,0.6);">
+          KERB RUMBLE
+        </div>
+        <div id="hud-badge-slipstream" style="display: none; font-size: 9px; font-weight: 900; letter-spacing: 1px; padding: 2px 6px; border-radius: 3px; background: #00f0ff; color: #000; box-shadow: 0 0 10px rgba(0,240,255,0.7);">
+          SLIPSTREAM ACTIVE
+        </div>
+      </div>
+      <div id="hud-gforce" style="font-size: 11px; font-family: monospace; font-weight: 800; color: #cbd5e1;">
+        +0.00G LAT &bull; +0.00G LONG
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 10px; font-family: monospace; font-weight: 700;">
+        <div>FL: <span id="hud-tire-fl" style="color: #22c55e;">85°C</span></div>
+        <div>FR: <span id="hud-tire-fr" style="color: #22c55e;">85°C</span></div>
+        <div>RL: <span id="hud-tire-rl" style="color: #22c55e;">85°C</span></div>
+        <div>RR: <span id="hud-tire-rr" style="color: #22c55e;">85°C</span></div>
+      </div>
+    `;
+    bottomBar.appendChild(centerPill);
 
     // Right: Instrument Cluster (Speed, Gear, Tachometer Arc, Nitro, DRS, Brake Temp)
     const cluster = document.createElement('div');
@@ -234,6 +286,9 @@ export class RaceHUD {
     this.rootElement.querySelector('#hud-btn-camera')?.addEventListener('click', () => {
       if (this.onCycleCameraCallback) this.onCycleCameraCallback();
     });
+    this.rootElement.querySelector('#hud-btn-audio')?.addEventListener('click', () => {
+      if (this.onToggleAudioCallback) this.onToggleAudioCallback();
+    });
 
     // Element caching
     this.positionElement = this.rootElement.querySelector('#hud-position');
@@ -247,6 +302,21 @@ export class RaceHUD {
     this.nitroBarElement = this.rootElement.querySelector('#hud-nitro-bar');
     this.drsBadgeElement = this.rootElement.querySelector('#hud-drs-badge');
     this.brakeTempElement = this.rootElement.querySelector('#hud-brake-temp');
+
+    this.audioBtnElement = this.rootElement.querySelector('#hud-btn-audio');
+    this.gforceElement = this.rootElement.querySelector('#hud-gforce');
+    this.tireFlElement = this.rootElement.querySelector('#hud-tire-fl');
+    this.tireFrElement = this.rootElement.querySelector('#hud-tire-fr');
+    this.tireRlElement = this.rootElement.querySelector('#hud-tire-rl');
+    this.tireRrElement = this.rootElement.querySelector('#hud-tire-rr');
+    this.kerbBadgeElement = this.rootElement.querySelector('#hud-badge-kerb');
+    this.slipstreamBadgeElement = this.rootElement.querySelector('#hud-badge-slipstream');
+  }
+
+  private getTireColor(temp: number): string {
+    if (temp < 75) return '#38bdf8'; // Cyan cold
+    if (temp <= 105) return '#22c55e'; // Neon green optimal
+    return '#f97316'; // Orange overheating
   }
 
   /**
@@ -273,7 +343,6 @@ export class RaceHUD {
     }
     if (this.tachArcElement) {
       const frac = Math.max(0.0, Math.min(1.0, telemetry.rpm / (telemetry.maxRpm || 10000)));
-      // Arc length is 314 (pi * r where r=100)
       const offset = 314 * (1.0 - frac);
       this.tachArcElement.setAttribute('stroke-dashoffset', offset.toFixed(1));
     }
@@ -340,7 +409,51 @@ export class RaceHUD {
       }
     }
 
-    // 9. Minimap Draw
+    // 9. G-Forces Readout
+    if (this.gforceElement) {
+      const latG = (telemetry.lateralG ?? 0.0).toFixed(2);
+      const longG = (telemetry.longitudinalG ?? 0.0).toFixed(2);
+      this.gforceElement.textContent = `${latG >= '0' ? '+' : ''}${latG}G LAT • ${longG >= '0' ? '+' : ''}${longG}G LONG`;
+    }
+
+    // 10. 4-Corner Tire Temps
+    const temps = telemetry.tireTemps || [85, 85, 85, 85];
+    if (this.tireFlElement) {
+      this.tireFlElement.textContent = `${Math.round(temps[0])}°C`;
+      this.tireFlElement.style.color = this.getTireColor(temps[0]);
+    }
+    if (this.tireFrElement) {
+      this.tireFrElement.textContent = `${Math.round(temps[1])}°C`;
+      this.tireFrElement.style.color = this.getTireColor(temps[1]);
+    }
+    if (this.tireRlElement) {
+      this.tireRlElement.textContent = `${Math.round(temps[2])}°C`;
+      this.tireRlElement.style.color = this.getTireColor(temps[2]);
+    }
+    if (this.tireRrElement) {
+      this.tireRrElement.textContent = `${Math.round(temps[3])}°C`;
+      this.tireRrElement.style.color = this.getTireColor(temps[3]);
+    }
+
+    // 11. Dynamic Badges (Kerb Rumble & Slipstream Active)
+    if (this.kerbBadgeElement) {
+      const isKerb = (telemetry.kerbRumbleIntensity ?? 0) > 0.05;
+      this.kerbBadgeElement.style.display = isKerb ? 'inline-block' : 'none';
+    }
+    if (this.slipstreamBadgeElement) {
+      this.slipstreamBadgeElement.style.display = telemetry.slipstreamActive ? 'inline-block' : 'none';
+    }
+
+    // 12. Audio Mute Button State
+    if (this.audioBtnElement) {
+      const muted = Boolean(telemetry.audioMuted);
+      this.audioBtnElement.textContent = muted ? '[M] AUDIO: MUTE' : '[M] AUDIO: ON';
+      this.audioBtnElement.style.background = muted ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)';
+      this.audioBtnElement.style.color = muted ? '#f87171' : '#4ade80';
+      this.audioBtnElement.style.borderColor = muted ? 'rgba(248,113,113,0.4)' : 'rgba(74,222,128,0.4)';
+    }
+
+    // 13. Minimap Draw
     this.drawMinimap(telemetry);
   }
 
@@ -429,5 +542,13 @@ export class RaceHUD {
     this.sectorSplitsContainer = null;
     this.minimapCanvas = null;
     this.minimapCtx = null;
+    this.audioBtnElement = null;
+    this.gforceElement = null;
+    this.tireFlElement = null;
+    this.tireFrElement = null;
+    this.tireRlElement = null;
+    this.tireRrElement = null;
+    this.kerbBadgeElement = null;
+    this.slipstreamBadgeElement = null;
   }
 }

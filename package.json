@@ -5,6 +5,7 @@
   "description": "Apex Grand Prix: Uncapped Next-Gen Edition — Multi-Part AAA 3D Racing Game with ~400 MB Modular .PAK Asset Footprint",
   "type": "module",
   "scripts": {
+    "predev": "node tools/ensure_paks.mjs",
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173",
@@ -14,7 +15,8 @@
     "build:paks:sky": "python3 tools/build_sky_paks.py",
     "build:paks:tracks": "python3 tools/build_track_paks.py",
     "build:paks:vehicles": "python3 tools/build_vehicle_paks.py",
-    "build:paks": "python3 tools/build_sky_paks.py && python3 tools/build_track_paks.py && python3 tools/build_vehicle_paks.py"
+    "build:paks": "node tools/ensure_paks.mjs --force",
+    "build:paks:check": "node tools/ensure_paks.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",

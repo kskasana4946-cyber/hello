@@ -780,6 +780,6 @@ t4('T4-24', ['F1', 'F2', 'F35', 'F36', 'F42'], 'Full Production Smoke & Zero-Con
 
   // Total footprint audit
   const audit = ctx.fsProbe.getAssetFootprintAudit();
-  assertInRange(audit.totalFootprintMb, 380, 420);
+  assertInRange(audit.totalFootprintMb, 760, 850);
   assertEqual(audit.totalPakFileCount, 42);
 });

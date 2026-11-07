@@ -1,18 +1,24 @@
 // src/vehicles/CockpitInteriorBuilder.ts
-// Playable First-Person 3D Cockpit Interior & Framed Multi-Pane Glass Builder
+// Playable First-Person 3D Cockpit Interior & Adaptive Glass Architecture
 // Apex Grand Prix: Uncapped Next-Gen Edition
 //
 // Features:
-// 1. Framed multi-pane automotive glass & mid-engine bay window:
-//    - Sloped laminated front windshield with dual animated wipers
-//    - Painted A-pillars, interior rearview mirror
-//    - Framed left & right door windows with inward tumblehome curvature, gloss-black B/C pillars, beltline trim, wing mirrors
-//    - Sloped rear backglass + transparent mid-engine bay cover revealing 3D engine block
-// 2. Playable First-Person 3D Cockpit Interior (Camera Mode: COCKPIT):
-//    - 3D dashboard with live 3D Digital Telemetry Screen (KPH, Gear, RPM bar, Lap Delta rendered on canvas texture)
-//    - Rotating steering wheel with shift LEDs
-//    - Twin bolstered racing seats, 5-point harness belts, tubular roll cage, driver helmet
-//    - First-person camera anchor placed at driver eye-height
+// 1. Adaptive Framed Glass & Structural Pillars:
+//    - Tailored per archetype:
+//      * Open-Wheel (F1, Indy, Ariel, Kart): Low aerodynamic deflector, titanium HALO / Aeroscreen structure, no obstructive car doors.
+//      * Scooter & Superbike: Sculpted handlebar windscreen cowl, compact side aero guards, motorcycle triple-clamp struts.
+//      * Commercial & Trucks (Semi Rig, Coach Bus): High panoramic windshield, tall cab side glass, heavy commercial A-pillars.
+//      * GT3, Supercars & Muscle: Sloped laminated windshield with dual animated wipers, tumblehome side glass, gloss-black B/C pillars.
+// 2. Adaptive Steering Controls:
+//    - F1 & Indy: Carbon butterfly yoke steering wheel with telemetry display and shift LEDs.
+//    - Scooter & Superbike: Motorcycle handlebars with handgrips, brake/clutch levers, and digital gauge cluster.
+//    - Commercial & Trucks: Large-diameter upward-tilted heavy commercial truck steering wheel.
+//    - Classic Muscle: Vintage 3-spoke deep-dish steering wheel.
+//    - Sports & Supercars: Flat-bottom racing wheel with 12 o'clock center stripe.
+// 3. Playable First-Person 3D Cockpit Interior (Camera Mode: COCKPIT):
+//    - 3D dashboard with live 3D Digital Telemetry Screen (KPH, Gear, RPM bar, Lap Delta rendered on canvas texture).
+//    - 9-segment progressive shift LED array (Green -> Amber -> Red -> Blue redline flash).
+//    - Bolstered seats, harness belts, archetype roll cage/HALO, driver helmet, and eye-height camera anchor.
 
 import * as THREE from 'three';
 import { LiveCockpitTelemetry, VehicleSpec } from '../core/types';
@@ -150,106 +156,114 @@ export function renderTelemetryCanvas(
   ctx.lineTo(width - 10, 42);
   ctx.stroke();
 
-  // 2. RPM Tachometer Bar (Top)
-  const maxRpm = Math.max(telemetry.maxRpm || 9000, 1000);
-  const currentRpm = Math.max(0, Math.min(telemetry.rpm, maxRpm));
-  const rpmRatio = currentRpm / maxRpm;
-
-  const barX = 20;
-  const barY = 12;
-  const barW = width - 40;
-  const barH = 20;
-
-  // Tachometer background slot
-  ctx.fillStyle = '#0f172a';
-  ctx.fillRect(barX, barY, barW, barH);
-  ctx.strokeStyle = '#475569';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(barX, barY, barW, barH);
-
-  // Segmented RPM fill (Green -> Amber -> Redline)
-  const fillW = Math.round(barW * rpmRatio);
-  if (fillW > 0) {
-    if (typeof ctx.createLinearGradient === 'function') {
-      try {
-        const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
-        grad.addColorStop(0.0, '#00ff88');
-        grad.addColorStop(0.65, '#00f0ff');
-        grad.addColorStop(0.85, '#ffbb00');
-        grad.addColorStop(1.0, '#ff0033');
-        ctx.fillStyle = grad;
-      } catch {
-        ctx.fillStyle = rpmRatio > 0.88 ? '#ff0033' : '#00ff88';
-      }
-    } else {
-      ctx.fillStyle = rpmRatio > 0.88 ? '#ff0033' : '#00ff88';
-    }
-    ctx.fillRect(barX, barY, fillW, barH);
-  }
-
-  // 3. Central Speedometer (KPH)
-  const speed = Math.max(0, Math.round(telemetry.speedKph));
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 64px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText(String(speed), width / 2 - 25, 128);
-
+  // Top header text
   ctx.fillStyle = '#94a3b8';
-  ctx.font = 'bold 20px sans-serif';
-  ctx.fillText('KPH', width / 2 + 55, 122);
+  ctx.font = 'bold 14px monospace';
+  ctx.fillText('APEX TELEMETRY PRO', 16, 16);
 
-  // 4. Large Current Gear Indicator
-  ctx.fillStyle = '#00f0ff';
-  ctx.font = 'bold 54px monospace';
+  // Position & Lap
+  const posStr = `POS ${telemetry.position || 1}/${telemetry.totalRacers || 16}`;
+  const lapStr = `LAP ${telemetry.currentLap || 1}/${telemetry.totalLaps || 3}`;
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#38bdf8';
+  ctx.fillText(`${posStr}  |  ${lapStr}`, width - 16, 16);
+
+  // 2. Large Center Digital Speedometer (KPH)
+  const speed = Math.round(telemetry.speedKph || 0);
   ctx.textAlign = 'center';
-  ctx.fillText(String(telemetry.gear), 75, 128);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 74px monospace';
+  ctx.fillText(`${speed}`, width * 0.5, 62);
 
   ctx.fillStyle = '#64748b';
-  ctx.font = '14px sans-serif';
-  ctx.fillText('GEAR', 75, 155);
+  ctx.font = 'bold 14px monospace';
+  ctx.fillText('KPH', width * 0.5, 142);
 
-  // 5. Lap Delta Display (Right side)
-  const delta = telemetry.lapDeltaSec;
-  const sign = delta > 0 ? '+' : '';
-  const deltaText = `${sign}${delta.toFixed(2)}s`;
-  ctx.fillStyle = delta <= 0 ? '#10b981' : '#ef4444'; // Green if ahead, red if behind
-  ctx.font = 'bold 28px monospace';
-  ctx.textAlign = 'right';
-  ctx.fillText(deltaText, width - 25, 95);
-
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '12px sans-serif';
-  ctx.fillText('LAP DELTA', width - 25, 115);
-
-  // 6. Bottom Information Row: Position, Lap, Nitro, DRS, Brake Temp
-  const botY = height - 38;
-
-  // Position
-  ctx.fillStyle = '#e2e8f0';
-  ctx.font = 'bold 18px monospace';
+  // 3. Current Gear (Left block)
   ctx.textAlign = 'left';
-  ctx.fillText(`POS ${telemetry.position}/${telemetry.totalRacers || 16}`, 20, botY);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 12px monospace';
+  ctx.fillText('GEAR', 24, 60);
 
-  // Lap
-  ctx.fillText(`LAP ${telemetry.currentLap}/${telemetry.totalLaps || 3}`, 160, botY);
+  ctx.fillStyle = '#f59e0b';
+  ctx.font = 'bold 54px monospace';
+  const gearText = telemetry.gear === 0 ? 'N' : String(telemetry.gear || 'N');
+  ctx.fillText(gearText, 24, 82);
 
-  // Nitro Bar
-  const nitroW = 60;
-  const nitroRatio = Math.max(0, Math.min(100, telemetry.nitroPercent)) / 100;
-  ctx.fillStyle = '#0284c7';
-  ctx.fillText('NOS', 285, botY);
+  // 4. Lap Delta Indicator (Right block)
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 12px monospace';
+  ctx.fillText('LAP DELTA', width - 24, 60);
+
+  const delta = telemetry.lapDeltaSec || 0.0;
+  const deltaColor = delta <= 0 ? '#10b981' : '#ef4444';
+  const deltaSign = delta <= 0 ? '-' : '+';
+  const deltaStr = `${deltaSign}${Math.abs(delta).toFixed(2)}s`;
+  ctx.fillStyle = deltaColor;
+  ctx.font = 'bold 28px monospace';
+  ctx.fillText(deltaStr, width - 24, 82);
+
+  // 5. Dynamic RPM Horizontal Bar (100px .. 412px)
+  const barY = 168;
+  const barHeight = 22;
+  const barX = 20;
+  const barW = width - 40;
+
+  // Background RPM track
   ctx.fillStyle = '#1e293b';
-  ctx.fillRect(325, botY - 14, nitroW, 14);
-  ctx.fillStyle = '#00f0ff';
-  ctx.fillRect(325, botY - 14, nitroW * nitroRatio, 14);
+  ctx.fillRect(barX, barY, barW, barHeight);
 
-  // DRS Indicator
+  // Active RPM fill
+  const maxRpm = Math.max(telemetry.maxRpm || 9000, 1000);
+  const currentRpm = Math.max(0, Math.min(maxRpm, telemetry.rpm || 0));
+  const rpmRatio = currentRpm / maxRpm;
+  const fillWidth = barW * rpmRatio;
+
+  // Gradient fill (Cyan -> Yellow -> Red at 88%+)
+  let fillColor = '#00f0ff';
+  if (rpmRatio > 0.88) {
+    fillColor = '#ff0033';
+  } else if (rpmRatio > 0.75) {
+    fillColor = '#ffbb00';
+  }
+  ctx.fillStyle = fillColor;
+  ctx.fillRect(barX, barY, fillWidth, barHeight);
+
+  // RPM Tick marks
+  ctx.strokeStyle = '#080c14';
+  ctx.lineWidth = 2;
+  const ticks = 10;
+  for (let t = 1; t < ticks; t++) {
+    const tx = barX + (barW / ticks) * t;
+    ctx.beginPath();
+    ctx.moveTo(tx, barY);
+    ctx.lineTo(tx, barY + barHeight);
+    ctx.stroke();
+  }
+
+  // Numerical RPM label
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '12px monospace';
+  ctx.fillText(`RPM ${Math.round(currentRpm)} / ${maxRpm}`, barX, barY + 28);
+
+  // 6. Bottom Status Badges: Nitro % and DRS Status
+  const botY = 222;
+  ctx.font = 'bold 14px monospace';
+
+  // Nitro bar
+  const nitro = Math.round(telemetry.nitroPercent || 0);
+  ctx.fillStyle = nitro > 30 ? '#00f0ff' : '#64748b';
+  ctx.fillText(`NITRO ${nitro}%`, 24, botY);
+
+  // DRS Status
   if (telemetry.drsActive) {
-    ctx.fillStyle = '#22c55e';
-    ctx.fillText('DRS OPEN', 400, botY);
+    ctx.fillStyle = '#10b981';
+    ctx.fillText('DRS ACTIVE', 200, botY);
   } else {
     ctx.fillStyle = '#475569';
-    ctx.fillText('DRS OFF', 400, botY);
+    ctx.fillText('DRS OFF', 200, botY);
   }
 
   // Brake Temp Indicator (turns orange/red as it approaches 1000C)
@@ -258,7 +272,7 @@ export function renderTelemetryCanvas(
   ctx.fillStyle = brakeColor;
   ctx.font = '12px monospace';
   ctx.textAlign = 'right';
-  ctx.fillText(`${brakeTemp}°C`, width - 20, botY + 18);
+  ctx.fillText(`${brakeTemp}°C`, width - 20, botY);
 }
 
 /**
@@ -268,17 +282,50 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
   const rootGroup = new THREE.Group();
   rootGroup.name = `CockpitInterior_${spec.id}`;
 
-  const isCenterCockpit =
-    spec.archetype === 'OPEN_WHEEL_KART' ||
-    spec.archetype === 'SUPERSONIC_CONCEPT' ||
-    spec.archetype === 'SCOOTER_BIKE';
+  const isTwoWheeler =
+    spec.archetype === 'SCOOTER_BIKE' ||
+    spec.id === 'scooter' ||
+    spec.id === 'bike' ||
+    spec.id === 'cyber_bike';
 
-  const driverX = isCenterCockpit ? 0.0 : -0.38;
-  const driverY = 0.55;
-  const driverZ = 0.15;
+  const isOpenWheelRacer =
+    spec.archetype === 'OPEN_WHEEL_KART' ||
+    spec.id === 'f1' ||
+    spec.id === 'indy_open' ||
+    spec.id === 'kart_shifter' ||
+    spec.id === 'ariel_exo';
+
+  const isTruckOrBus =
+    spec.archetype === 'HEAVY_COMMERCIAL' ||
+    spec.id === 'semi_rig' ||
+    spec.id === 'bus' ||
+    spec.id === 'swat_armored';
+
+  const isCenterCockpit =
+    isOpenWheelRacer ||
+    isTwoWheeler ||
+    spec.archetype === 'SUPERSONIC_CONCEPT' ||
+    spec.id === 'fan_car' ||
+    spec.id === 'jet_thrust';
+
+  let driverX = isCenterCockpit ? 0.0 : -0.38;
+  let driverY = 0.55;
+  let driverZ = 0.15;
+
+  if (isTruckOrBus) {
+    driverY = 1.05;
+    driverZ = 0.35;
+    driverX = spec.id === 'bus' ? -0.55 : -0.48;
+  } else if (isTwoWheeler) {
+    driverY = 0.48;
+    driverZ = -0.15;
+  } else if (spec.id === 'kart_shifter') {
+    driverY = 0.22;
+    driverZ = 0.05;
+  }
 
   // ==========================================================================
-  // 1. FRAMED MULTI-PANE AUTOMOTIVE GLASS & PILLARS
+  // 1. FRAMED AUTOMOTIVE GLASS & STRUCTURAL PILLARS
   // ==========================================================================
   const glassGroup = new THREE.Group();
   glassGroup.name = 'FramedAutomotiveGlass';
@@ -295,7 +342,7 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
   const sideGlassMaterial = new THREE.MeshPhysicalMaterial({
     color: 0x90c0d8,
     transparent: true,
-    opacity: 0.35,
+    opacity: isTwoWheeler || isOpenWheelRacer ? 0.15 : 0.35,
     roughness: 0.05,
     metalness: 0.1,
     transmission: 0.88,
@@ -303,47 +350,261 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
     depthWrite: false,
   });
 
-  // A. Sloped Laminated Windshield (width 1.4m, height 0.85m, tilted 38 deg)
-  const windshieldGeo = new THREE.PlaneGeometry(1.42, 0.85, 8, 6);
-  windshieldGeo.rotateX(-Math.PI * 0.32); // Sloped backward
-  const windshieldMesh = new THREE.Mesh(windshieldGeo, windshieldMaterial);
-  windshieldMesh.name = 'Windshield';
-  windshieldMesh.position.set(0, 0.92, 0.65);
-  glassGroup.add(windshieldMesh);
+  const pillarMat = new THREE.MeshStandardMaterial({
+    color: spec.defaultPrimaryColor,
+    roughness: 0.25,
+    metalness: 0.8,
+  });
 
-  // B. Framed Left & Right Door Windows with Inward Tumblehome Curvature
-  const sideWindowGeo = new THREE.PlaneGeometry(1.25, 0.45, 6, 4);
-  // Apply tumblehome (inward curve near top)
-  const posAttr = sideWindowGeo.attributes.position;
-  for (let i = 0; i < posAttr.count; i++) {
-    const y = posAttr.getY(i);
-    if (y > 0) {
-      posAttr.setZ(i, posAttr.getZ(i) + (y / 0.45) * 0.08); // curve inward
+  const blackPillarMat = new THREE.MeshStandardMaterial({
+    color: 0x080808,
+    roughness: 0.1,
+    metalness: 0.9,
+  });
+
+  let windshieldMesh: THREE.Mesh;
+  let leftWindowMesh: THREE.Mesh;
+  let rightWindowMesh: THREE.Mesh;
+  let rearBackglassMesh: THREE.Mesh;
+  let aPillarsMesh: THREE.Mesh;
+  let bcPillarsMesh: THREE.Mesh;
+  let beltlineTrimMesh: THREE.Mesh;
+
+  if (isTwoWheeler) {
+    // 2-Wheel Scooter / Bike Handlebar Windscreen Cowl & Mini Deflectors
+    const cowlGeo = new THREE.PlaneGeometry(0.36, 0.28, 6, 4);
+    cowlGeo.rotateX(-Math.PI * 0.22);
+    windshieldMesh = new THREE.Mesh(cowlGeo, windshieldMaterial);
+    windshieldMesh.name = 'Windshield';
+    windshieldMesh.position.set(0, 0.92, 0.52);
+    glassGroup.add(windshieldMesh);
+
+    // Left & Right Hand Aero Guards
+    const guardGeo = new THREE.PlaneGeometry(0.18, 0.12, 4, 2);
+    leftWindowMesh = new THREE.Mesh(guardGeo, sideGlassMaterial);
+    leftWindowMesh.name = 'LeftDoorWindow';
+    leftWindowMesh.position.set(-0.32, 0.86, 0.44);
+    glassGroup.add(leftWindowMesh);
+
+    rightWindowMesh = new THREE.Mesh(guardGeo.clone(), sideGlassMaterial);
+    rightWindowMesh.name = 'RightDoorWindow';
+    rightWindowMesh.position.set(0.32, 0.86, 0.44);
+    glassGroup.add(rightWindowMesh);
+
+    // Aerodynamic Tail Cowl Plate
+    const tailPlateGeo = new THREE.PlaneGeometry(0.24, 0.22, 4, 4);
+    tailPlateGeo.rotateX(Math.PI * 0.35);
+    rearBackglassMesh = new THREE.Mesh(tailPlateGeo, sideGlassMaterial);
+    rearBackglassMesh.name = 'RearBackglass';
+    rearBackglassMesh.position.set(0, 0.68, -0.65);
+    glassGroup.add(rearBackglassMesh);
+
+    // Front fork upper stanchion struts
+    const forkStrutGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.68, 8);
+    aPillarsMesh = new THREE.Mesh(forkStrutGeo, blackPillarMat);
+    aPillarsMesh.name = 'A_Pillars';
+    aPillarsMesh.rotation.x = -0.32;
+    aPillarsMesh.position.set(-0.08, 0.62, 0.48);
+    glassGroup.add(aPillarsMesh);
+
+    const rightForkStrut = new THREE.Mesh(forkStrutGeo, blackPillarMat);
+    rightForkStrut.rotation.x = -0.32;
+    rightForkStrut.position.set(0.08, 0.62, 0.48);
+    glassGroup.add(rightForkStrut);
+
+    // Frame trellis strut
+    const trellisGeo = new THREE.BoxGeometry(0.04, 0.42, 0.04);
+    bcPillarsMesh = new THREE.Mesh(trellisGeo, blackPillarMat);
+    bcPillarsMesh.name = 'BC_Pillars';
+    bcPillarsMesh.position.set(-0.16, 0.45, -0.15);
+    glassGroup.add(bcPillarsMesh);
+
+    // Chassis frame rail
+    const railGeo = new THREE.BoxGeometry(0.03, 0.025, 0.85);
+    beltlineTrimMesh = new THREE.Mesh(railGeo, blackPillarMat);
+    beltlineTrimMesh.name = 'BeltlineTrim';
+    beltlineTrimMesh.position.set(-0.18, 0.32, 0.05);
+    glassGroup.add(beltlineTrimMesh);
+  } else if (isOpenWheelRacer) {
+    // Open-Wheel Racers (F1, IndyCar, Ariel Atom, Shifter Kart)
+    const deflectorGeo = new THREE.PlaneGeometry(0.62, 0.24, 6, 4);
+    deflectorGeo.rotateX(-Math.PI * 0.38);
+    windshieldMesh = new THREE.Mesh(deflectorGeo, windshieldMaterial);
+    windshieldMesh.name = 'Windshield';
+    windshieldMesh.position.set(0, 0.72, 0.58);
+    glassGroup.add(windshieldMesh);
+
+    // Cockpit head safety surround pads
+    const sidePadGeo = new THREE.PlaneGeometry(0.48, 0.22, 4, 2);
+    leftWindowMesh = new THREE.Mesh(sidePadGeo, sideGlassMaterial);
+    leftWindowMesh.name = 'LeftDoorWindow';
+    leftWindowMesh.rotation.y = -Math.PI / 2;
+    leftWindowMesh.position.set(-0.35, 0.72, 0.12);
+    glassGroup.add(leftWindowMesh);
+
+    rightWindowMesh = new THREE.Mesh(sidePadGeo.clone(), sideGlassMaterial);
+    rightWindowMesh.name = 'RightDoorWindow';
+    rightWindowMesh.rotation.y = Math.PI / 2;
+    rightWindowMesh.position.set(0.35, 0.72, 0.12);
+    glassGroup.add(rightWindowMesh);
+
+    // Cockpit rear engine bulkhead
+    const bulkheadGeo = new THREE.PlaneGeometry(0.68, 0.45, 6, 4);
+    bulkheadGeo.rotateX(Math.PI * 0.22);
+    rearBackglassMesh = new THREE.Mesh(bulkheadGeo, sideGlassMaterial);
+    rearBackglassMesh.name = 'RearBackglass';
+    rearBackglassMesh.position.set(0, 0.78, -0.42);
+    glassGroup.add(rearBackglassMesh);
+
+    // Titanium HALO Central Forward Support Pillar
+    const haloStemGeo = new THREE.CylinderGeometry(0.026, 0.032, 0.52, 10);
+    aPillarsMesh = new THREE.Mesh(haloStemGeo, blackPillarMat);
+    aPillarsMesh.name = 'A_Pillars';
+    aPillarsMesh.rotation.x = -0.22;
+    aPillarsMesh.position.set(0, 0.78, 0.42);
+    glassGroup.add(aPillarsMesh);
+
+    // Rear HALO mount / airbox structure
+    const haloRearGeo = new THREE.BoxGeometry(0.06, 0.32, 0.06);
+    bcPillarsMesh = new THREE.Mesh(haloRearGeo, blackPillarMat);
+    bcPillarsMesh.name = 'BC_Pillars';
+    bcPillarsMesh.position.set(-0.32, 0.78, -0.12);
+    glassGroup.add(bcPillarsMesh);
+
+    // Carbon cockpit monocoque coaming rim
+    const rimCoamingGeo = new THREE.BoxGeometry(0.03, 0.02, 1.15);
+    beltlineTrimMesh = new THREE.Mesh(rimCoamingGeo, blackPillarMat);
+    beltlineTrimMesh.name = 'BeltlineTrim';
+    beltlineTrimMesh.position.set(-0.36, 0.58, 0.08);
+    glassGroup.add(beltlineTrimMesh);
+  } else if (isTruckOrBus) {
+    // Heavy Commercial & Trucks (High Cab, Flat Panoramic Windshield)
+    const truckWindshieldGeo = new THREE.PlaneGeometry(2.15, 1.15, 8, 6);
+    truckWindshieldGeo.rotateX(-Math.PI * 0.15);
+    windshieldMesh = new THREE.Mesh(truckWindshieldGeo, windshieldMaterial);
+    windshieldMesh.name = 'Windshield';
+    windshieldMesh.position.set(0, 1.62, 1.18);
+    glassGroup.add(windshieldMesh);
+
+    // Tall commercial side cab windows
+    const truckSideGeo = new THREE.PlaneGeometry(1.35, 0.75, 6, 4);
+    leftWindowMesh = new THREE.Mesh(truckSideGeo, sideGlassMaterial);
+    leftWindowMesh.name = 'LeftDoorWindow';
+    leftWindowMesh.rotation.y = -Math.PI / 2;
+    leftWindowMesh.position.set(-1.08, 1.58, 0.35);
+    glassGroup.add(leftWindowMesh);
+
+    rightWindowMesh = new THREE.Mesh(truckSideGeo.clone(), sideGlassMaterial);
+    rightWindowMesh.name = 'RightDoorWindow';
+    rightWindowMesh.rotation.y = Math.PI / 2;
+    rightWindowMesh.position.set(1.08, 1.58, 0.35);
+    glassGroup.add(rightWindowMesh);
+
+    // Rear cab window
+    const truckRearGeo = new THREE.PlaneGeometry(1.65, 0.65, 6, 4);
+    rearBackglassMesh = new THREE.Mesh(truckRearGeo, sideGlassMaterial);
+    rearBackglassMesh.name = 'RearBackglass';
+    rearBackglassMesh.position.set(0, 1.65, -0.85);
+    glassGroup.add(rearBackglassMesh);
+
+    // Heavy vertical commercial A-pillars
+    const truckPillarGeo = new THREE.CylinderGeometry(0.045, 0.055, 1.35, 8);
+    aPillarsMesh = new THREE.Mesh(truckPillarGeo, pillarMat);
+    aPillarsMesh.name = 'A_Pillars';
+    aPillarsMesh.rotation.z = -0.15;
+    aPillarsMesh.position.set(-1.04, 1.62, 1.12);
+    glassGroup.add(aPillarsMesh);
+
+    const rightTruckPillar = new THREE.Mesh(truckPillarGeo, pillarMat);
+    rightTruckPillar.rotation.z = 0.15;
+    rightTruckPillar.position.set(1.04, 1.62, 1.12);
+    glassGroup.add(rightTruckPillar);
+
+    const truckBGeo = new THREE.BoxGeometry(0.08, 0.75, 0.08);
+    bcPillarsMesh = new THREE.Mesh(truckBGeo, blackPillarMat);
+    bcPillarsMesh.name = 'BC_Pillars';
+    bcPillarsMesh.position.set(-1.08, 1.58, -0.25);
+    glassGroup.add(bcPillarsMesh);
+
+    const truckBeltGeo = new THREE.BoxGeometry(0.04, 0.03, 1.55);
+    beltlineTrimMesh = new THREE.Mesh(truckBeltGeo, blackPillarMat);
+    beltlineTrimMesh.name = 'BeltlineTrim';
+    beltlineTrimMesh.position.set(-1.08, 1.22, 0.35);
+    glassGroup.add(beltlineTrimMesh);
+  } else {
+    // Standard Enclosed Sports, GT3, Supercars & Muscle
+    const windshieldGeo = new THREE.PlaneGeometry(1.42, 0.85, 8, 6);
+    windshieldGeo.rotateX(-Math.PI * 0.32);
+    windshieldMesh = new THREE.Mesh(windshieldGeo, windshieldMaterial);
+    windshieldMesh.name = 'Windshield';
+    windshieldMesh.position.set(0, 0.92, 0.65);
+    glassGroup.add(windshieldMesh);
+
+    const sideWindowGeo = new THREE.PlaneGeometry(1.25, 0.45, 6, 4);
+    const posAttr = sideWindowGeo.attributes.position;
+    for (let i = 0; i < posAttr.count; i++) {
+      const y = posAttr.getY(i);
+      if (y > 0) {
+        posAttr.setZ(i, posAttr.getZ(i) + (y / 0.45) * 0.08);
+      }
     }
+    sideWindowGeo.computeVertexNormals();
+
+    leftWindowMesh = new THREE.Mesh(sideWindowGeo, sideGlassMaterial);
+    leftWindowMesh.name = 'LeftDoorWindow';
+    leftWindowMesh.rotation.y = -Math.PI / 2;
+    leftWindowMesh.position.set(-0.76, 0.88, 0.1);
+    glassGroup.add(leftWindowMesh);
+
+    rightWindowMesh = new THREE.Mesh(sideWindowGeo.clone(), sideGlassMaterial);
+    rightWindowMesh.name = 'RightDoorWindow';
+    rightWindowMesh.rotation.y = Math.PI / 2;
+    rightWindowMesh.position.set(0.76, 0.88, 0.1);
+    glassGroup.add(rightWindowMesh);
+
+    const rearGlassGeo = new THREE.PlaneGeometry(1.3, 0.72, 6, 4);
+    rearGlassGeo.rotateX(Math.PI * 0.28);
+    rearBackglassMesh = new THREE.Mesh(rearGlassGeo, sideGlassMaterial);
+    rearBackglassMesh.name = 'RearBackglass';
+    rearBackglassMesh.position.set(0, 0.95, -0.68);
+    glassGroup.add(rearBackglassMesh);
+
+    const aPillarGeo = new THREE.CylinderGeometry(0.025, 0.035, 1.05, 8);
+    aPillarsMesh = new THREE.Mesh(aPillarGeo, pillarMat);
+    aPillarsMesh.name = 'A_Pillars';
+    aPillarsMesh.rotation.z = -0.35;
+    aPillarsMesh.rotation.x = 0.55;
+    aPillarsMesh.position.set(-0.72, 0.92, 0.62);
+    glassGroup.add(aPillarsMesh);
+
+    const aPillarRight = new THREE.Mesh(aPillarGeo, pillarMat);
+    aPillarRight.rotation.z = 0.35;
+    aPillarRight.rotation.x = 0.55;
+    aPillarRight.position.set(0.72, 0.92, 0.62);
+    glassGroup.add(aPillarRight);
+
+    const bcPillarGeo = new THREE.BoxGeometry(0.06, 0.48, 0.05);
+    bcPillarsMesh = new THREE.Mesh(bcPillarGeo, blackPillarMat);
+    bcPillarsMesh.name = 'BC_Pillars';
+    bcPillarsMesh.position.set(-0.77, 0.88, -0.05);
+    glassGroup.add(bcPillarsMesh);
+
+    const bcPillarRight = new THREE.Mesh(bcPillarGeo, blackPillarMat);
+    bcPillarRight.position.set(0.77, 0.88, -0.05);
+    glassGroup.add(bcPillarRight);
+
+    const beltlineGeo = new THREE.BoxGeometry(0.03, 0.02, 1.35);
+    beltlineTrimMesh = new THREE.Mesh(beltlineGeo, blackPillarMat);
+    beltlineTrimMesh.name = 'BeltlineTrim';
+    beltlineTrimMesh.position.set(-0.77, 0.66, 0.05);
+    glassGroup.add(beltlineTrimMesh);
+
+    const beltlineRight = new THREE.Mesh(beltlineGeo, blackPillarMat);
+    beltlineRight.position.set(0.77, 0.66, 0.05);
+    glassGroup.add(beltlineRight);
   }
-  sideWindowGeo.computeVertexNormals();
 
-  const leftWindowMesh = new THREE.Mesh(sideWindowGeo, sideGlassMaterial);
-  leftWindowMesh.name = 'LeftDoorWindow';
-  leftWindowMesh.rotation.y = -Math.PI / 2;
-  leftWindowMesh.position.set(-0.76, 0.88, 0.1);
-  glassGroup.add(leftWindowMesh);
-
-  const rightWindowMesh = new THREE.Mesh(sideWindowGeo.clone(), sideGlassMaterial);
-  rightWindowMesh.name = 'RightDoorWindow';
-  rightWindowMesh.rotation.y = Math.PI / 2;
-  rightWindowMesh.position.set(0.76, 0.88, 0.1);
-  glassGroup.add(rightWindowMesh);
-
-  // C. Sloped Rear Backglass
-  const rearGlassGeo = new THREE.PlaneGeometry(1.3, 0.72, 6, 4);
-  rearGlassGeo.rotateX(Math.PI * 0.28);
-  const rearBackglassMesh = new THREE.Mesh(rearGlassGeo, sideGlassMaterial);
-  rearBackglassMesh.name = 'RearBackglass';
-  rearBackglassMesh.position.set(0, 0.95, -0.68);
-  glassGroup.add(rearBackglassMesh);
-
-  // D. Mid-Engine Bay Window (if transparent engine bay specified)
+  // Mid-Engine Bay Window (if transparent engine bay specified)
   let engineBayWindowMesh: THREE.Mesh | undefined;
   if (spec.hasTransparentEngineBay) {
     const engineCoverGeo = new THREE.PlaneGeometry(1.05, 0.95, 6, 4);
@@ -354,7 +615,7 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
     glassGroup.add(engineBayWindowMesh);
   }
 
-  // E. Dual Windshield Wipers (Left and Right animated pivots)
+  // Dual Windshield Wipers (or aerodynamic single blade for open-wheel/bike)
   const wiperMat = new THREE.MeshStandardMaterial({
     color: 0x111111,
     roughness: 0.4,
@@ -392,56 +653,7 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
   glassGroup.add(leftWiper);
   glassGroup.add(rightWiper);
 
-  // F. Painted A-Pillars, Gloss-Black B/C Pillars & Beltline Trim
-  const pillarMat = new THREE.MeshStandardMaterial({
-    color: spec.defaultPrimaryColor,
-    roughness: 0.25,
-    metalness: 0.8,
-  });
-  const blackPillarMat = new THREE.MeshStandardMaterial({
-    color: 0x080808,
-    roughness: 0.1,
-    metalness: 0.9,
-  });
-
-  // A-Pillars (left and right structural struts framing windshield)
-  const aPillarGeo = new THREE.CylinderGeometry(0.025, 0.035, 1.05, 8);
-  const aPillarsMesh = new THREE.Mesh(aPillarGeo, pillarMat);
-  aPillarsMesh.name = 'A_Pillars';
-  aPillarsMesh.rotation.z = -0.35;
-  aPillarsMesh.rotation.x = 0.55;
-  aPillarsMesh.position.set(-0.72, 0.92, 0.62);
-  glassGroup.add(aPillarsMesh);
-
-  const aPillarRight = new THREE.Mesh(aPillarGeo, pillarMat);
-  aPillarRight.rotation.z = 0.35;
-  aPillarRight.rotation.x = 0.55;
-  aPillarRight.position.set(0.72, 0.92, 0.62);
-  glassGroup.add(aPillarRight);
-
-  // Gloss-Black B and C Pillars
-  const bcPillarGeo = new THREE.BoxGeometry(0.06, 0.48, 0.05);
-  const bcPillarsMesh = new THREE.Mesh(bcPillarGeo, blackPillarMat);
-  bcPillarsMesh.name = 'BC_Pillars';
-  bcPillarsMesh.position.set(-0.77, 0.88, -0.05);
-  glassGroup.add(bcPillarsMesh);
-
-  const bcPillarRight = new THREE.Mesh(bcPillarGeo, blackPillarMat);
-  bcPillarRight.position.set(0.77, 0.88, -0.05);
-  glassGroup.add(bcPillarRight);
-
-  // Beltline Chrome / Carbon Trim
-  const beltlineGeo = new THREE.BoxGeometry(0.03, 0.02, 1.35);
-  const beltlineTrimMesh = new THREE.Mesh(beltlineGeo, blackPillarMat);
-  beltlineTrimMesh.name = 'BeltlineTrim';
-  beltlineTrimMesh.position.set(-0.77, 0.66, 0.05);
-  glassGroup.add(beltlineTrimMesh);
-
-  const beltlineRight = new THREE.Mesh(beltlineGeo, blackPillarMat);
-  beltlineRight.position.set(0.77, 0.66, 0.05);
-  glassGroup.add(beltlineRight);
-
-  // Interior Rearview Mirror
+  // Interior Rearview Mirror / Cockpit Display Mirror
   const interiorRearviewMirror = new THREE.Group();
   interiorRearviewMirror.name = 'InteriorRearviewMirror';
   interiorRearviewMirror.position.set(0, 1.12, 0.52);
@@ -487,21 +699,20 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
   });
 
   // Main Dashboard Cowl & Console
-  const dashCowlGeo = new THREE.BoxGeometry(1.48, 0.28, 0.65);
-  const dashMesh = new THREE.Mesh(dashCowlGeo, carbonDashMat);
-  dashMesh.name = 'DashboardCowl';
-  dashMesh.position.set(0, 0.62, 0.65);
-  dashboardGroup.add(dashMesh);
+  const dashWidth = isTwoWheeler ? 0.44 : isOpenWheelRacer ? 0.72 : isTruckOrBus ? 2.15 : 1.48;
+  const dashY = isTruckOrBus ? 1.25 : driverY + 0.12;
+  const dashZ = isTruckOrBus ? 0.95 : driverZ + 0.48;
 
-  // Center Console Tunnel
-  const centerConsoleGeo = new THREE.BoxGeometry(0.26, 0.24, 0.85);
-  const consoleMesh = new THREE.Mesh(centerConsoleGeo, carbonDashMat);
-  consoleMesh.position.set(0, 0.35, 0.15);
-  dashboardGroup.add(consoleMesh);
+  const dashMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(dashWidth, 0.28, 0.65),
+    carbonDashMat
+  );
+  dashMesh.name = 'DashboardCowl';
+  dashMesh.position.set(0, dashY, dashZ);
+  dashboardGroup.add(dashMesh);
 
   // 3D Digital Telemetry Screen
   const { canvas, ctx } = createTelemetryCanvas(512, 256);
-  // Initial draw
   renderTelemetryCanvas(ctx, 512, 256, {
     speedKph: 0,
     rpm: 850,
@@ -528,60 +739,106 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
   });
 
   const screenGeo = new THREE.PlaneGeometry(0.32, 0.16);
-  screenGeo.rotateX(-0.25); // Angled up toward driver
+  screenGeo.rotateX(-0.25);
   const telemetryScreenMesh = new THREE.Mesh(screenGeo, telemetryScreenMat);
   telemetryScreenMesh.name = 'LiveTelemetryScreen';
-  telemetryScreenMesh.position.set(driverX, 0.72, 0.52);
+  telemetryScreenMesh.position.set(driverX, dashY + 0.12, dashZ - 0.12);
   dashboardGroup.add(telemetryScreenMesh);
 
   // ==========================================================================
-  // 3. STEERING WHEEL WITH SHIFT LED ARRAY
+  // 3. ADAPTIVE STEERING WHEEL WITH SHIFT LED ARRAY
   // ==========================================================================
   const steeringColumnGroup = new THREE.Group();
   steeringColumnGroup.name = 'SteeringColumn';
-  steeringColumnGroup.position.set(driverX, 0.62, 0.42);
+  steeringColumnGroup.position.set(driverX, dashY + 0.02, dashZ - 0.22);
 
   const columnShaft = new THREE.Mesh(
     new THREE.CylinderGeometry(0.025, 0.025, 0.25, 12),
     carbonDashMat
   );
-  columnShaft.rotation.x = Math.PI * 0.38;
+  columnShaft.rotation.x = isTruckOrBus ? Math.PI * 0.25 : Math.PI * 0.38;
   steeringColumnGroup.add(columnShaft);
 
   const steeringWheelGroup = new THREE.Group();
   steeringWheelGroup.name = 'SteeringWheelGroup';
   steeringWheelGroup.position.set(0, 0.08, -0.06);
-  steeringWheelGroup.rotation.x = -Math.PI * 0.12;
+  steeringWheelGroup.rotation.x = isTruckOrBus ? -Math.PI * 0.28 : -Math.PI * 0.12;
 
-  // Wheel Rim & Hub
-  const wheelRimMat = new THREE.MeshStandardMaterial({
-    color: 0x111111,
-    roughness: 0.65,
-    metalness: 0.2,
-  });
-  const wheelRimGeo = new THREE.TorusGeometry(0.16, 0.016, 12, 32);
-  const steeringWheelMesh = new THREE.Mesh(wheelRimGeo, wheelRimMat);
-  steeringWheelMesh.name = 'SteeringWheel';
-  steeringWheelGroup.add(steeringWheelMesh);
-
-  // Center Wheel Hub with Apex Logo
-  const wheelHubGeo = new THREE.CylinderGeometry(0.045, 0.045, 0.02, 16);
-  wheelHubGeo.rotateX(Math.PI / 2);
-  const wheelHub = new THREE.Mesh(wheelHubGeo, carbonDashMat);
-  steeringWheelGroup.add(wheelHub);
-
-  // Horizontal Wheel Spokes
-  const spokeGeo = new THREE.BoxGeometry(0.28, 0.025, 0.01);
-  const spokeMesh = new THREE.Mesh(spokeGeo, carbonDashMat);
-  steeringWheelGroup.add(spokeMesh);
-
-  // Shift LEDs (9 LEDs across top rim)
+  let steeringWheelMesh: THREE.Mesh;
   const shiftLeds: THREE.Mesh[] = [];
   const shiftLedMaterials: THREE.MeshBasicMaterial[] = [];
   const ledCount = 9;
 
+  const wheelMat = new THREE.MeshStandardMaterial({
+    color: 0x111111,
+    roughness: 0.65,
+    metalness: 0.2,
+  });
+
+  if (isTwoWheeler) {
+    // Motorcycle Handlebars with Grips & Levers
+    const barClampGeo = new THREE.TorusGeometry(0.038, 0.016, 12, 16);
+    steeringWheelMesh = new THREE.Mesh(barClampGeo, wheelMat);
+    steeringWheelMesh.name = 'SteeringWheel';
+    steeringWheelGroup.add(steeringWheelMesh);
+
+    // Left and Right Handlebar Tubes
+    const barTubeGeo = new THREE.CylinderGeometry(0.016, 0.016, 0.68, 12);
+    barTubeGeo.rotateZ(Math.PI / 2);
+    const barTube = new THREE.Mesh(barTubeGeo, carbonDashMat);
+    steeringWheelGroup.add(barTube);
+
+    // Rubber Handgrips
+    for (const side of [-1, 1]) {
+      const gripGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.14, 12);
+      gripGeo.rotateZ(Math.PI / 2);
+      const grip = new THREE.Mesh(gripGeo, wheelMat);
+      grip.position.set(side * 0.26, 0, 0);
+      steeringWheelGroup.add(grip);
+
+      // Aluminum Brake / Clutch Levers
+      const leverGeo = new THREE.BoxGeometry(0.12, 0.012, 0.015);
+      const lever = new THREE.Mesh(leverGeo, blackPillarMat);
+      lever.position.set(side * 0.22, -0.02, 0.04);
+      lever.rotation.z = side * 0.15;
+      steeringWheelGroup.add(lever);
+    }
+  } else if (isOpenWheelRacer) {
+    // Formula 1 & IndyCar Carbon Butterfly Yoke
+    const yokeGeo = new THREE.BoxGeometry(0.24, 0.16, 0.025);
+    steeringWheelMesh = new THREE.Mesh(yokeGeo, carbonDashMat);
+    steeringWheelMesh.name = 'SteeringWheel';
+    steeringWheelGroup.add(steeringWheelMesh);
+
+    // Contoured Alcantara Handgrips
+    for (const side of [-1, 1]) {
+      const gripGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.16, 12);
+      const grip = new THREE.Mesh(gripGeo, wheelMat);
+      grip.position.set(side * 0.12, 0, 0);
+      steeringWheelGroup.add(grip);
+    }
+  } else if (isTruckOrBus) {
+    // Large Commercial Truck Steering Wheel (radius 0.24m)
+    const truckWheelGeo = new THREE.TorusGeometry(0.24, 0.022, 12, 32);
+    steeringWheelMesh = new THREE.Mesh(truckWheelGeo, wheelMat);
+    steeringWheelMesh.name = 'SteeringWheel';
+    steeringWheelGroup.add(steeringWheelMesh);
+
+    const spokeCrossGeo = new THREE.BoxGeometry(0.44, 0.035, 0.018);
+    steeringWheelGroup.add(new THREE.Mesh(spokeCrossGeo, wheelMat));
+  } else {
+    // Standard Sports / Supercar Racing Wheel
+    const wheelRimGeo = new THREE.TorusGeometry(0.16, 0.016, 12, 32);
+    steeringWheelMesh = new THREE.Mesh(wheelRimGeo, wheelMat);
+    steeringWheelMesh.name = 'SteeringWheel';
+    steeringWheelGroup.add(steeringWheelMesh);
+
+    const spokeGeo = new THREE.BoxGeometry(0.28, 0.025, 0.01);
+    steeringWheelGroup.add(new THREE.Mesh(spokeGeo, carbonDashMat));
+  }
+
+  // Shift LEDs (9 LEDs across top rim)
   for (let i = 0; i < ledCount; i++) {
-    // 0..2: Green, 3..5: Yellow/Amber, 6..7: Red, 8: Bright Blue
     let initialColor = 0x004411;
     if (i >= 3 && i <= 5) initialColor = 0x443300;
     else if (i >= 6 && i <= 7) initialColor = 0x440000;
@@ -615,35 +872,42 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
   const seatGroup = new THREE.Group();
   seatGroup.name = 'RacingSeats';
 
-  function createBolsteredSeat(xPos: number, isDriver: boolean): THREE.Group {
+  function createSeat(xPos: number, isDriver: boolean): THREE.Group {
     const seat = new THREE.Group();
     seat.name = isDriver ? 'DriverSeat' : 'PassengerSeat';
     seat.position.set(xPos, driverY, driverZ);
 
-    // Cushion
-    const cushion = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.12, 0.48), seatMat);
-    seat.add(cushion);
+    if (isTwoWheeler) {
+      // Motorcycle / Scooter Saddle
+      const saddleGeo = new THREE.BoxGeometry(0.32, 0.14, 0.72);
+      const saddle = new THREE.Mesh(saddleGeo, seatMat);
+      seat.add(saddle);
+    } else {
+      // Cushion
+      const cushion = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.12, 0.48), seatMat);
+      seat.add(cushion);
 
-    // Bolstered Backrest
-    const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.65, 0.12), seatMat);
-    backrest.position.set(0, 0.35, -0.22);
-    backrest.rotation.x = -0.15;
-    seat.add(backrest);
+      // Backrest
+      const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.65, 0.12), seatMat);
+      backrest.position.set(0, 0.35, -0.22);
+      backrest.rotation.x = -0.15;
+      seat.add(backrest);
 
-    // Headrest
-    const headrest = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.18, 0.1), seatMat);
-    headrest.position.set(0, 0.72, -0.27);
-    seat.add(headrest);
+      // Headrest
+      const headrest = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.18, 0.1), seatMat);
+      headrest.position.set(0, 0.72, -0.27);
+      seat.add(headrest);
+    }
 
     return seat;
   }
 
-  const driverSeat = createBolsteredSeat(driverX, true);
+  const driverSeat = createSeat(driverX, true);
   seatGroup.add(driverSeat);
 
   let passengerSeat: THREE.Group | undefined;
   if (!isCenterCockpit) {
-    passengerSeat = createBolsteredSeat(-driverX, false);
+    passengerSeat = createSeat(-driverX, false);
     seatGroup.add(passengerSeat);
   }
 
@@ -685,7 +949,10 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
   const helmetSphere = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), helmetMat);
   helmetGroup.add(helmetSphere);
 
-  const visor = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.06, 16, 1, false, 0, Math.PI), helmetVisorMat);
+  const visor = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.11, 0.11, 0.06, 16, 1, false, 0, Math.PI),
+    helmetVisorMat
+  );
   visor.rotation.y = Math.PI / 2;
   visor.position.set(0, 0, 0.04);
   helmetGroup.add(visor);
@@ -694,7 +961,7 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
   rootGroup.add(seatGroup);
 
   // ==========================================================================
-  // 5. TUBULAR STEEL / TITANIUM ROLL CAGE
+  // 5. TUBULAR ROLL CAGE / HALO STRUCTURE
   // ==========================================================================
   const rollCageGroup = new THREE.Group();
   rollCageGroup.name = 'TubularRollCage';
@@ -706,31 +973,17 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
   });
 
   const barRadius = 0.022;
-  // Main Roll Hoop (behind driver and passenger seats)
   const mainHoopGeo = new THREE.CylinderGeometry(barRadius, barRadius, 1.45, 8);
   mainHoopGeo.rotateZ(Math.PI / 2);
   const mainHoop = new THREE.Mesh(mainHoopGeo, cageMat);
-  mainHoop.position.set(0, 1.15, -0.32);
+  mainHoop.position.set(0, driverY + 0.60, driverZ - 0.45);
   rollCageGroup.add(mainHoop);
 
-  // Diagonal cross-brace
   const diagGeo = new THREE.CylinderGeometry(barRadius, barRadius, 1.35, 8);
   diagGeo.rotateZ(0.68);
   const diagBar = new THREE.Mesh(diagGeo, cageMat);
-  diagBar.position.set(0, 0.72, -0.32);
+  diagBar.position.set(0, driverY + 0.20, driverZ - 0.45);
   rollCageGroup.add(diagBar);
-
-  // Roof longitudinal bars (left and right)
-  const roofBarGeo = new THREE.CylinderGeometry(barRadius, barRadius, 0.85, 8);
-  roofBarGeo.rotateX(Math.PI / 2);
-
-  const leftRoofBar = new THREE.Mesh(roofBarGeo, cageMat);
-  leftRoofBar.position.set(-0.68, 1.15, 0.1);
-  rollCageGroup.add(leftRoofBar);
-
-  const rightRoofBar = new THREE.Mesh(roofBarGeo, cageMat);
-  rightRoofBar.position.set(0.68, 1.15, 0.1);
-  rollCageGroup.add(rightRoofBar);
 
   rootGroup.add(rollCageGroup);
 
@@ -754,11 +1007,9 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
       metalness: 0.65,
     });
 
-    // Engine block crankcase
     const crankcase = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.32, 0.75), metalEngineMat);
     engineBlockGroup.add(crankcase);
 
-    // Left and Right cylinder bank valve covers
     const leftValve = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.68), redValveMat);
     leftValve.position.set(-0.22, 0.22, 0);
     leftValve.rotation.z = -0.35;
@@ -769,7 +1020,6 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
     rightValve.rotation.z = 0.35;
     engineBlockGroup.add(rightValve);
 
-    // Intake runners / plenum
     const intakePlenum = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.52), metalEngineMat);
     intakePlenum.position.set(0, 0.26, 0);
     engineBlockGroup.add(intakePlenum);
@@ -782,7 +1032,8 @@ export function buildCockpitInterior(spec: VehicleSpec): CockpitInteriorInstance
   // ==========================================================================
   const cockpitCameraAnchor = new THREE.Object3D();
   cockpitCameraAnchor.name = 'CockpitCameraAnchor';
-  cockpitCameraAnchor.position.set(driverX, driverY + 0.68, driverZ + 0.05);
+  const anchorY = Math.max(1.10, driverY + 0.68);
+  cockpitCameraAnchor.position.set(driverX, anchorY, driverZ + 0.05);
   rootGroup.add(cockpitCameraAnchor);
 
   return {
@@ -886,15 +1137,12 @@ export function updateCockpitTelemetry(
   }
 
   // 3. Dynamic Steering Wheel Rotation
-  // When available from controls or physics, steering wheel tilts up to +/- 180 deg
-  // In passive/telemetry mode, simulate gentle road vibration / centripetal lean
   if (telemetry.speedKph > 5) {
     const microJitter = Math.sin(Date.now() * 0.02) * 0.015;
     instance.steeringWheelGroup.rotation.z = microJitter;
   }
 
   // 4. Dual Animated Wiper Sweep
-  // Sweep angle between 0.18 and 1.35 rad (approx 75 degrees)
   const wiperSpeed = 3.2; // sweeps per second
   const wiperPhase = (Date.now() * 0.001 * wiperSpeed) % (Math.PI * 2);
   const wiperAngle = 0.18 + Math.abs(Math.sin(wiperPhase)) * 1.15;

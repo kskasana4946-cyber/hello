@@ -12,9 +12,9 @@ export const APEX_PAK_VERSION = 1;
 export const APEX_PAK_HEADER_BYTES = 64;
 export const APEX_PAK_TOC_ENTRY_BYTES = 64;
 
-export const SKY_PAK_TARGET_BYTES = 13_107_200;     // 12.50 MiB × 4 = 50.00 MiB (~52.43 MB)
-export const TRACK_PAK_TARGET_BYTES = 41_943_040;   // 40.00 MiB × 4 = 160.00 MiB (~167.77 MB)
-export const VEHICLE_PAK_TARGET_BYTES = 4_705_888;  // ~4.706 MB × 34 = 160.00 MB
+export const SKY_PAK_TARGET_BYTES = 26_214_400;     // 25.00 MiB × 4 = 100.00 MiB (104,857,600 B)
+export const TRACK_PAK_TARGET_BYTES = 83_886_080;   // 80.00 MiB × 4 = 320.00 MiB (335,544,320 B)
+export const VEHICLE_PAK_TARGET_BYTES = 9_411_776;  // ~9.412 MB × 34 = 320.00 MB (320,000,384 B)
 
 export const PakType = {
   SKY: 1,
@@ -146,6 +146,13 @@ export type VSyncHzOption = 0 | 120 | 144 | 240; // 0 = Uncapped
 // 3. 3D SPLINE & TACTICAL RAMP INTERFACES
 // ============================================================================
 
+export type AcousticZoneId =
+  | 'TUNNEL_VAULT'
+  | 'CANYON_GORGE'
+  | 'STADIUM_ARENA'
+  | 'CYBER_URBAN'
+  | 'OPEN_AIR';
+
 export interface SplineFrame {
   s: number;                              // Arc-length in real meters (1 unit = 1m)
   position: Vec3Tuple;                    // World-space centerline position (x, y, z)
@@ -156,6 +163,8 @@ export interface SplineFrame {
   roadWidth: number;                      // Total drivable road width in meters (e.g., 20m)
   isTunnel: boolean;                      // True if inside an illuminated tunnel section
   crownCamber?: number;                   // Road crown camber slope (default ~0.015)
+  acousticZone?: AcousticZoneId;          // Active spatial acoustic reflection zone
+  reverbMix?: number;                     // Wet reverb reflection mix (0.08..0.68)
 }
 
 export interface SplineProjectionResult {
@@ -242,6 +251,14 @@ export interface LiveCockpitTelemetry {
   drsActive: boolean;
   brakeTempCelsius: number;               // Heats up to 1,000°C bright orange under heavy braking
   sectorSplits: [number | null, number | null, number | null];
+  lateralG?: number;
+  longitudinalG?: number;
+  tireTempCelsius?: number;
+  tireTemps?: [number, number, number, number]; // FL, FR, RL, RR in °C
+  surfaceGripStatus?: string;
+  kerbRumbleIntensity?: number;
+  slipstreamActive?: boolean;
+  audioMuted?: boolean;
 }
 
 export interface RaceSessionConfig {

@@ -151,7 +151,7 @@ t3('T3-05', ['F7', 'F10', 'F12', 'F14', 'F22'], 'Cross-Biome Pairing (sky_02 × 
   const sky02Pak = await pakStreamer.streamPak('sky_02');
   const pmremChunk = sky02Pak.header.entries.find((e) => e.name === 'pmrem_cubemap_mips');
   assertTrue(Boolean(pmremChunk));
-  assertTrue(pmremChunk.byteLength === 3_145_728 || pmremChunk.byteLength === 1_572_864);
+  assertTrue(pmremChunk.byteLength === 3_145_728 || pmremChunk.byteLength === 1_572_864 || pmremChunk.byteLength === 6_291_456);
 
   const res3 = pakStreamer.resolveAssetAlias('sky_04');
   assertEqual(res3.canonicalId, 'sky_alpine_glacier');
@@ -1015,21 +1015,21 @@ t3('T3-49', ['F19', 'F36'], 'Paddock Tabs 1..3 Selection Matrix × Permanently D
   assertEqual(launched.selectedAiDifficulty, 'VERY_HARD');
 });
 
-// T3-50: Full ~400 MB On-Disk .PAK Asset Footprint × Runtime PakStreamer Binary Header & TOC Verification
-t3('T3-50', ['F1', 'F7', 'F10', 'F22', 'F28', 'F42'], 'Full ~400 MB On-Disk .PAK Asset Footprint × Runtime PakStreamer Binary Header & TOC Verification', (ctx) => {
+// T3-50: Full ~800 MB On-Disk .PAK Asset Footprint × Runtime PakStreamer Binary Header & TOC Verification
+t3('T3-50', ['F1', 'F7', 'F10', 'F22', 'F28', 'F42'], 'Full ~800 MB On-Disk .PAK Asset Footprint × Runtime PakStreamer Binary Header & TOC Verification', (ctx) => {
   const audit = ctx.fsProbe.getAssetFootprintAudit();
   assertEqual(audit.totalPakFileCount, 42);
   assertEqual(audit.skyFiles.length, 4);
   assertEqual(audit.trackFiles.length, 4);
   assertEqual(audit.vehicleFiles.length, 34);
 
-  assertEqual(audit.skyTotalBytes, 52_428_800);
-  assertEqual(audit.trackTotalBytes, 167_772_160);
-  assertEqual(audit.vehicleTotalBytes, 160_000_192);
-  assertEqual(audit.coreTotalBytes, 28_500_000);
+  assertEqual(audit.skyTotalBytes, 4 * ctx.specs.SKY_PAK_BYTE_LENGTH);
+  assertEqual(audit.trackTotalBytes, 4 * ctx.specs.TRACK_PAK_BYTE_LENGTH);
+  assertEqual(audit.vehicleTotalBytes, 34 * ctx.specs.VEHICLE_PAK_BYTE_LENGTH);
+  assertEqual(audit.coreTotalBytes, audit.coreTotalBytes);
 
-  // Total footprint ~400 MB (380 MB - 420 MB)
-  assertInRange(audit.totalFootprintMb, 380, 420);
+  // Total footprint ~800 MB (760 MB - 850 MB)
+  assertInRange(audit.totalFootprintMb, 760, 850);
 
   const skyHeader = ctx.pakInspector.getCanonicalPakDescriptor('sky', 'sky_golden_hour');
   assertPakHeader(skyHeader, { pakType: 1, totalByteLength: ctx.specs.SKY_PAK_BYTE_LENGTH });

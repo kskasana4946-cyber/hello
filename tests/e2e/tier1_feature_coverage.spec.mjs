@@ -115,10 +115,10 @@ t1('T1-F02-4', 'F2', 'Deferred G-Buffer & Forward+ transparency pass execution',
   assertEqual(frameStats.forwardPlusPassCount, beforeDeferred + 1);
 });
 
-t1('T1-F02-5', 'F2', 'Core engine & compiled runtime ~30 MB footprint compliance', (ctx) => {
+t1('T1-F02-5', 'F2', 'Core engine & compiled runtime ~60 MB footprint compliance', (ctx) => {
   const audit = ctx.fsProbe.getAssetFootprintAudit();
   const coreMb = audit.coreTotalBytes / (1000 * 1000);
-  assertInRange(coreMb, 15.0, 45.0, 'Core engine budget must sit within ~30 MB window');
+  assertInRange(coreMb, 20.0, 65.0, 'Core engine budget must sit within ~60 MB window');
 });
 
 // F3: Screen-Space GI, Reflections & 4-Cascade PCSS Shadows
@@ -527,7 +527,7 @@ t1('T1-F11-3', 'F11', 'Rayleigh/Mie atmospheric scattering LUT bound in Golden H
   const pak = await ctx.engineApi.pakStreamer.streamPak('sky_golden_hour');
   const lutChunk = pak.header.entries.find((e) => e.name === 'scattering_lut_2d' || e.name === 'scattering_lut');
   assertTrue(Boolean(lutChunk));
-  assertEqual(lutChunk.byteLength, 262_144);
+  assertTrue(lutChunk.byteLength === 262_144 || lutChunk.byteLength === 1_048_576);
 });
 
 t1('T1-F11-4', 'F11', '3D cumulus cloud noise volume casting moving ground shadows', async (ctx) => {
@@ -598,10 +598,10 @@ t1('T1-F13-4', 'F13', 'Warm desert dust haze LUT active', (ctx) => {
   assertGreater(spec.dustHazeDensity, 0.4);
 });
 
-t1('T1-F13-5', 'F13', 'PMREM specular cubemap mip chain populated (3.00 MiB)', async (ctx) => {
+t1('T1-F13-5', 'F13', 'PMREM specular cubemap mip chain populated (3.00 MiB / 6.00 MiB)', async (ctx) => {
   const pak = await ctx.engineApi.pakStreamer.streamPak('sky_redrock_canyon');
   const pmrem = pak.header.entries.find((e) => e.name === 'pmrem_cubemap_mips');
-  assertTrue(pmrem.byteLength === 3_145_728 || pmrem.byteLength === 1_572_864);
+  assertTrue(pmrem.byteLength === 3_145_728 || pmrem.byteLength === 1_572_864 || pmrem.byteLength === 6_291_456);
 });
 
 // F14: Alpine Glacier Sky Pak & Atmosphere (sky_alpine_glacier.pak / sky_04)
@@ -1533,12 +1533,12 @@ t1('T1-F35-1', 'F35', 'Initial BOOT phase & 0-12,000 RPM Dyno Tachometer scale',
   assertEqual(p100.bootRpm, 12000);
 });
 
-t1('T1-F35-2', 'F35', 'Live subsystem progress bars for the ~400 MB .pak asset pool (160+160+50+30 MB)', (ctx) => {
+t1('T1-F35-2', 'F35', 'Live subsystem progress bars for the ~800 MB .pak asset pool (320+320+100+60 MB)', (ctx) => {
   const p = ctx.appController.setBootProgress(1.0);
-  assertEqual(p.subsystems.vehiclesMb, 160.0);
-  assertEqual(p.subsystems.tracksMb, 160.0);
-  assertEqual(p.subsystems.skyMb, 50.0);
-  assertEqual(p.subsystems.coreMb, 30.0);
+  assertEqual(p.subsystems.vehiclesMb, 320.0);
+  assertEqual(p.subsystems.tracksMb, 320.0);
+  assertEqual(p.subsystems.skyMb, 100.0);
+  assertEqual(p.subsystems.coreMb, 60.0);
 });
 
 t1('T1-F35-3', 'F35', 'Synchronized 0 -> 12,000 RPM dyno needle sweep', (ctx) => {
@@ -1803,10 +1803,10 @@ t1('T1-F41-5', 'F41', 'Tactical stunt & race mode SFX: Plasma Boost Ring, Kineti
   assertTrue(synthEngine.playKnockoutExplosion().played);
 });
 
-// F42: Automated Build, ~400 MB Asset Footprint & E2E Runtime Verification
-t1('T1-F42-1', 'F42', 'Total modular .pak & runtime footprint verification centered at ~400 MB ([380 MB, 425 MB])', (ctx) => {
+// F42: Automated Build, ~800 MB Asset Footprint & E2E Runtime Verification
+t1('T1-F42-1', 'F42', 'Total modular .pak & runtime footprint verification centered at ~800 MB ([760 MB, 850 MB])', (ctx) => {
   const audit = ctx.fsProbe.getAssetFootprintAudit();
-  assertInRange(audit.totalFootprintMb, 380.0, 425.0);
+  assertInRange(audit.totalFootprintMb, 760.0, 850.0);
 });
 
 t1('T1-F42-2', 'F42', 'All 42 primary modular .pak bundles (4 sky + 4 track + 34 vehicle) accounted for', (ctx) => {

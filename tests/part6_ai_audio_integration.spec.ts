@@ -16,11 +16,16 @@ import {
   AI_DIFFICULTY_SPECS,
   RACE_FORMAT_SPECS,
 } from '../src/ai/RacingAIDirector';
-import { GranularSynthEngine } from '../src/audio/GranularSynthEngine';
+import {
+  GranularSynthEngine,
+  POWERTRAIN_WAVETABLES,
+  POWERTRAIN_ARCHETYPES,
+} from '../src/audio/GranularSynthEngine';
 import { initApexGame } from '../src/main';
 import { SplineTrackStreamer } from '../src/tracks/SplineTrackStreamer';
 import { PakStreamer } from '../src/streaming/PakStreamer';
 import { VEHICLE_ROSTER, getVehicleById } from '../src/vehicles/VehicleRoster';
+import { RapierVehicleWorld } from '../src/physics/RapierVehicleWorld';
 
 describe('Milestone M6: AI Director, 7 Race Formats, Granular Synth & Global Runtime Controller', () => {
   let pakStreamer: PakStreamer;
@@ -510,5 +515,181 @@ describe('Milestone M6: AI Director, 7 Race Formats, Granular Synth & Global Run
       game.cycleCameraMode();
       expect(game.getState().cameraMode).toBe('CHASE');
     });
+
+    it('toggles audio mute and updates live telemetry state', () => {
+      game.completeBoot();
+      expect(game.getState().telemetry.audioMuted).toBe(false);
+
+      const isMuted = game.toggleAudioMute();
+      expect(isMuted).toBe(true);
+      expect(game.getState().telemetry.audioMuted).toBe(true);
+
+      const unmuted = game.toggleAudioMute();
+      expect(unmuted).toBe(false);
+      expect(game.getState().telemetry.audioMuted).toBe(false);
+    });
+  });
+
+  // ==========================================================================
+  // 7. Next-Gen 12-Powertrain Wavetables, PCM & Transients Suite (M6 & M8)
+  // ==========================================================================
+  describe('7. Next-Gen 12-Powertrain Wavetables, 48kHz PCM & Transients Suite', () => {
+    it('verifies all 12 custom 32-harmonic PeriodicWave Fourier wavetables exist with 33 coefficients', () => {
+      const requiredFamilies = [
+        'two_stroke',
+        'twin_rotor',
+        'inline4_na',
+        'inline4_turbo',
+        'inline6_turbo',
+        'rally_boxer4',
+        'crossplane_v8',
+        'flatplane_v8',
+        'flat6_na',
+        'screaming_v12',
+        'ev_motor',
+        'supersonic_jet',
+      ];
+
+      for (const fam of requiredFamilies) {
+        expect(POWERTRAIN_WAVETABLES[fam]).toBeDefined();
+        const { real, imag } = POWERTRAIN_WAVETABLES[fam];
+        expect(real.length).toBe(33); // DC (k=0) + k=1..32 harmonics
+        expect(imag.length).toBe(33);
+        // DC offset must be 0
+        expect(real[0]).toBe(0);
+        expect(imag[0]).toBe(0);
+      }
+    });
+
+    it('decodes raw 48kHz signed 16-bit PCM chunks into AudioBuffer or handles headless gracefully', () => {
+      // 100 samples of 16-bit PCM (200 bytes)
+      const pcm16Data = new Uint8Array(200);
+      for (let i = 0; i < 100; i++) {
+        const val = Math.round(Math.sin((i / 100) * Math.PI * 2) * 16000);
+        pcm16Data[i * 2] = val & 0xff;
+        pcm16Data[i * 2 + 1] = (val >> 8) & 0xff;
+      }
+
+      // decodePcmChunkToAudioBuffer should execute without throwing
+      const buffer = synthEngine.decodePcmChunkToAudioBuffer(pcm16Data, 48000);
+      // In headless/Node without AudioContext it returns null; in browser/mock with AudioContext it returns AudioBuffer
+      if (buffer) {
+        expect(buffer.sampleRate).toBe(48000);
+        expect(buffer.length).toBe(100);
+      }
+    });
+
+    it('executes persistent stick-slip tire screech resonator without spamming node allocations', () => {
+      expect(synthEngine.sfxCounters.tireSkid).toBe(0);
+
+      // Rapidly simulate 60 frames of drifting
+      for (let f = 0; f < 60; f++) {
+        const res = synthEngine.playTireSkid(0.85);
+        expect(res.played).toBe(true);
+        expect(res.intensity).toBe(0.85);
+      }
+
+      expect(synthEngine.sfxCounters.tireSkid).toBe(60);
+      expect(synthEngine.sfxHistory.filter((s) => s === 'tireSkid').length).toBe(60);
+    });
+
+    it('executes motorsport transients: gear shifts, kerb rumble, barrier scrape, AI Doppler pass-by, and tunnel reverb', () => {
+      // Upshift ignition cut
+      const upshift = synthEngine.playGearShift('UPSHIFT', true);
+      expect(upshift.played).toBe(true);
+
+      // Downshift rev-match
+      const downshift = synthEngine.playGearShift('DOWNSHIFT');
+      expect(downshift.played).toBe(true);
+
+      // Kerb rumble
+      const kerb = synthEngine.playKerbRumble(0.8, 140);
+      expect(kerb.played).toBe(true);
+
+      // Barrier scrape
+      const scrape = synthEngine.playBarrierScrape(0.9, 'RIGHT');
+      expect(scrape.played).toBe(true);
+
+      // AI Doppler pass-by
+      const passBy = synthEngine.playAiDopplerPassBy(22.0, 4.5, 0.8);
+      expect(passBy.played).toBe(true);
+
+      // Slipstream wind
+      const wind = synthEngine.playSlipstreamWind(0.95);
+      expect(wind.played).toBe(true);
+      expect(synthEngine.sfxCounters.slipstreamWind).toBeGreaterThan(0);
+
+      // Tunnel reverb
+      expect(() => synthEngine.setTunnelReverb(true)).not.toThrow();
+      expect(() => synthEngine.setTunnelReverb(false)).not.toThrow();
+    });
+  });
+
+  // ==========================================================================
+  // 8. Multi-Surface Pacejka, 4-Corner Thermals & Dynamic Physics (M1 & M8)
+  // ==========================================================================
+  describe('8. Multi-Surface Pacejka, 4-Corner Tire Thermals & Physics Integration', () => {
+    let world: RapierVehicleWorld;
+
+    beforeEach(() => {
+      world = new RapierVehicleWorld(splineStreamer);
+    });
+
+    it('classifies ASPHALT, KERB, and SHOULDER surfaces by lateral offset with thermodynamic heating', () => {
+      const spec = VEHICLE_ROSTER[0];
+      const car = world.addVehicle('multi_surface_car', spec, 0, 0);
+
+      expect(car.wheels.length).toBe(4);
+      expect(car.wheels[0].surfaceType).toBe('ASPHALT');
+      expect(car.wheels[0].surfaceMu).toBe(1.15);
+      expect(car.wheels[0].tireTempCelsius).toBeGreaterThan(0);
+
+      // Place car near road edge (kerb zone)
+      world.setVehicleSpeedAndHeading('multi_surface_car', 100, 0, 8.8); // 8.8m from center (roadWidth = 20m)
+      world.setControlInput('multi_surface_car', { throttle: 0.8, brake: 0, steer: 0.05 });
+      world.stepSubsteps(10);
+
+      const updated = world.getVehicleState('multi_surface_car')!;
+      const hasKerb = updated.wheels.some((w) => w.surfaceType === 'KERB');
+      expect(hasKerb).toBe(true);
+      expect(updated.kerbRumbleIntensity).toBeGreaterThan(0.0);
+    });
+
+    it('activates slipstream wake drafting within 25m behind leading opponents', () => {
+      const spec = VEHICLE_ROSTER[0];
+      const playerCar = world.addVehicle('player_drafter', spec, 100, 0);
+      world.setVehicleSpeedAndHeading('player_drafter', 200, 0, 0);
+
+      // Set leader 15m ahead along the centerline
+      world.setLeaders([{ alongOffset: 115, lateralOffset: 0.2, speedMs: 200 / 3.6 }]);
+
+      world.setControlInput('player_drafter', { throttle: 1.0, brake: 0, steer: 0 });
+      world.stepSubsteps(5);
+
+      const st = world.getVehicleState('player_drafter')!;
+      expect(st.slipstreamActive).toBe(true);
+      expect(st.slipstreamDraftRatio).toBeGreaterThan(0.2);
+    });
+
+    it('applies Mod Studio tuning parameters directly to suspension and aerodynamics', () => {
+      const spec = VEHICLE_ROSTER[0];
+      world.addVehicle('tuned_car', spec, 0, 0);
+
+      world.setVehicleTuning('tuned_car', {
+        suspensionStiffness: 1.3,
+        downforceRatio: 1.25,
+        camberDeg: -2.8,
+        rideHeightOffset: -0.03,
+      });
+
+      world.setVehicleSpeedAndHeading('tuned_car', 150, 0, 0);
+      world.stepSubsteps(10);
+
+      const st = world.getVehicleState('tuned_car')!;
+      expect(st.downforceN).toBeGreaterThan(0);
+      expect(Number.isFinite(st.lateralG)).toBe(true);
+      expect(Number.isFinite(st.longitudinalG)).toBe(true);
+    });
   });
 });
+
