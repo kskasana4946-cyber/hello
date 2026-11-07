@@ -63,21 +63,21 @@ describe('Part 4 / Milestone M4: 34 Modular Vehicle Paks & 3D Cockpits', () => {
   // ==========================================================================
   // 1. 34 VEHICLE .PAK BUNDLES ON DISK (F28)
   // ==========================================================================
-  describe('F28: 34 Modular Vehicle Paks on Disk (assets/paks/vehicles/car_01..34/)', () => {
-    it('verifies that exactly 34 vehicle.pak files exist on disk', () => {
+  describe('F28: 30 Modular Vehicle Paks on Disk (assets/paks/vehicles/car_01..30/)', () => {
+    it('verifies that exactly 30 vehicle.pak files exist on disk', () => {
       expect(fs.existsSync(VEHICLES_ASSET_DIR)).toBe(true);
 
-      for (let i = 1; i <= 34; i++) {
+      for (let i = 1; i <= 30; i++) {
         const carDir = `car_${String(i).padStart(2, '0')}`;
         const pakPath = path.join(VEHICLES_ASSET_DIR, carDir, 'vehicle.pak');
         expect(fs.existsSync(pakPath), `Missing pak at ${pakPath}`).toBe(true);
       }
     });
 
-    it(`verifies each vehicle.pak is EXACTLY ${VEHICLE_PAK_TARGET_BYTES} bytes (total 160,000,192 bytes)`, () => {
+    it(`verifies each vehicle.pak is EXACTLY ${VEHICLE_PAK_TARGET_BYTES} bytes (total 282,353,280 bytes)`, () => {
       let totalBytes = 0;
 
-      for (let i = 1; i <= 34; i++) {
+      for (let i = 1; i <= 30; i++) {
         const carDir = `car_${String(i).padStart(2, '0')}`;
         const pakPath = path.join(VEHICLES_ASSET_DIR, carDir, 'vehicle.pak');
         const stat = fs.statSync(pakPath);
@@ -85,11 +85,11 @@ describe('Part 4 / Milestone M4: 34 Modular Vehicle Paks & 3D Cockpits', () => {
         totalBytes += stat.size;
       }
 
-      expect(totalBytes).toBe(34 * VEHICLE_PAK_TARGET_BYTES); // 160,000,192 bytes (~160.00 MB)
+      expect(totalBytes).toBe(30 * VEHICLE_PAK_TARGET_BYTES);
     });
 
-    it('validates 64-byte APEXPAK1 header and TOC on car_01, car_15, car_25, car_34', () => {
-      const testIndices = [1, 15, 25, 34];
+    it('validates 64-byte APEXPAK1 header and TOC on car_01, car_15, car_25, car_30', () => {
+      const testIndices = [1, 15, 25, 30];
 
       for (const idx of testIndices) {
         const carDir = `car_${String(idx).padStart(2, '0')}`;
@@ -146,7 +146,7 @@ describe('Part 4 / Milestone M4: 34 Modular Vehicle Paks & 3D Cockpits', () => {
 
       const car25Resolved = resolveVehiclePakDir(25);
       expect(car25Resolved.carDir).toBe('car_25');
-      expect(car25Resolved.slug).toBe('pagani_v12');
+      expect(car25Resolved.slug).toBe('pagani_utopia');
 
       const carPath = path.join(ROOT_DIR, car25Resolved.pakPath);
       const nodeBuf = fs.readFileSync(carPath);
@@ -164,135 +164,130 @@ describe('Part 4 / Milestone M4: 34 Modular Vehicle Paks & 3D Cockpits', () => {
   });
 
   // ==========================================================================
-  // 2. COMPLETE 34-VEHICLE ROSTER & SPECIFICATIONS (F32)
+  // 2. COMPLETE 30-VEHICLE ROSTER & SPECIFICATIONS (F32)
   // ==========================================================================
   describe('F32: VehicleRoster Catalog & Motorsport Tiers 0–5', () => {
-    it('verifies catalog contains exactly 34 vehicles in canonical order', () => {
+    it('verifies catalog contains exactly 30 vehicles in canonical order', () => {
       const all = getAllVehicles();
-      expect(all.length).toBe(34);
-      expect(VEHICLE_COUNT).toBe(34);
+      expect(all.length).toBe(30);
+      expect(VEHICLE_COUNT).toBe(30);
 
-      for (let i = 0; i < 34; i++) {
+      for (let i = 0; i < 30; i++) {
         expect(all[i].index).toBe(i + 1);
         expect(all[i].pakDir).toBe(`car_${String(i + 1).padStart(2, '0')}`);
       }
     });
 
     it('verifies exact Motorsport Tier distribution and win progression', () => {
-      // Tier 0: Starter (Cars 1-3) -> 0 wins required
+      // Tier 0: Starter (Cars 1-4) -> 4 Hatchbacks, exactly 2 FREE
       const tier0 = getVehiclesByTier(0);
-      expect(tier0.length).toBe(3);
-      expect(tier0.map((v) => v.id)).toEqual(['scooter', 'hot_hatch', 'roadster']);
-      expect(tier0.every((v) => v.winsRequired === 0)).toBe(true);
-      expect(tier0.every((v) => v.creditCost === 0)).toBe(true);
+      expect(tier0.length).toBe(4);
+      expect(tier0.map((v) => v.id)).toEqual(['mini_jcw', 'hot_hatch', 'golf_r', 'gr_yaris']);
+      expect(tier0[0].winsRequired).toBe(0);
+      expect(tier0[0].creditCost).toBe(0);
+      expect(tier0[1].winsRequired).toBe(0);
+      expect(tier0[1].creditCost).toBe(0);
+      expect(tier0[2].winsRequired).toBe(1);
+      expect(tier0[3].winsRequired).toBe(2);
 
-      // Tier 1: JDM / Off-Road (Cars 4-9) -> 1..6 wins required
+      // Tier 1: (Cars 5-9) -> 3..7 wins required
       const tier1 = getVehiclesByTier(1);
-      expect(tier1.length).toBe(6);
-      expect(tier1.map((v) => v.winsRequired)).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(tier1.length).toBe(5);
+      expect(tier1.map((v) => v.winsRequired)).toEqual([3, 4, 5, 6, 7]);
 
-      // Tier 2: Heavy Iron & Pursuit (Cars 10-15) -> 7..12 wins required
+      // Tier 2: (Cars 10-14) -> 8..12 wins required
       const tier2 = getVehiclesByTier(2);
-      expect(tier2.length).toBe(6);
-      expect(tier2.map((v) => v.winsRequired)).toEqual([7, 8, 9, 10, 11, 12]);
+      expect(tier2.length).toBe(5);
+      expect(tier2.map((v) => v.winsRequired)).toEqual([8, 9, 10, 11, 12]);
 
-      // Tier 3: Track Toys & GT3 (Cars 16-21) -> 13..18 wins required
+      // Tier 3: (Cars 15-19) -> 13..17 wins required
       const tier3 = getVehiclesByTier(3);
-      expect(tier3.length).toBe(6);
-      expect(tier3.map((v) => v.winsRequired)).toEqual([13, 14, 15, 16, 17, 18]);
+      expect(tier3.length).toBe(5);
+      expect(tier3.map((v) => v.winsRequired)).toEqual([13, 14, 15, 16, 17]);
 
-      // Tier 4: Exotic Supercars & Hypercars (Cars 22-27) -> 19..24 wins required
+      // Tier 4: (Cars 20-24) -> 18..22 wins required
       const tier4 = getVehiclesByTier(4);
-      expect(tier4.length).toBe(6);
-      expect(tier4.map((v) => v.winsRequired)).toEqual([19, 20, 21, 22, 23, 24]);
+      expect(tier4.length).toBe(5);
+      expect(tier4.map((v) => v.winsRequired)).toEqual([18, 19, 20, 21, 22]);
 
-      // Tier 5: Prototypes & Mythic Concepts (Cars 28-34) -> 25..31 wins required
+      // Tier 5: (Cars 25-30) -> 23..28 wins required
       const tier5 = getVehiclesByTier(5);
-      expect(tier5.length).toBe(7);
-      expect(tier5.map((v) => v.winsRequired)).toEqual([25, 26, 27, 28, 29, 30, 31]);
+      expect(tier5.length).toBe(6);
+      expect(tier5.map((v) => v.winsRequired)).toEqual([23, 24, 25, 26, 27, 28]);
     });
 
     it('verifies exact vehicle specs for key representative cars', () => {
-      // Car #1 Scooter
-      const scooter = getVehicleById('scooter')!;
-      expect(scooter).toBeDefined();
-      expect(scooter.massKg).toBe(135);
-      expect(scooter.zeroToHundredSec).toBe(7.2);
-      expect(scooter.topSpeedKph).toBe(145);
-      expect(scooter.winsRequired).toBe(0);
+      // Car #1 Mini Cooper JCW
+      const mini = getVehicleById('mini_jcw')!;
+      expect(mini).toBeDefined();
+      expect(mini.massKg).toBe(1280);
+      expect(mini.zeroToHundredSec).toBe(6.1);
+      expect(mini.topSpeedKph).toBe(246);
+      expect(mini.winsRequired).toBe(0);
 
-      // Car #4 RX-7
-      const rx7 = getVehicleById('jdm_rotary')!;
-      expect(rx7.massKg).toBe(1280);
-      expect(rx7.zeroToHundredSec).toBe(4.7);
-      expect(rx7.topSpeedKph).toBe(265);
-      expect(rx7.winsRequired).toBe(1);
+      // Car #2 Civic Type-R
+      const typeR = getVehicleById('hot_hatch')!;
+      expect(typeR.massKg).toBe(1390);
+      expect(typeR.zeroToHundredSec).toBe(5.2);
+      expect(typeR.topSpeedKph).toBe(275);
+      expect(typeR.winsRequired).toBe(0);
 
-      // Car #15 Express Bus
-      const bus = getVehicleById('bus')!;
-      expect(bus.massKg).toBe(8400);
-      expect(bus.zeroToHundredSec).toBe(11.5);
-      expect(bus.topSpeedKph).toBe(136);
-      expect(bus.winsRequired).toBe(12);
+      // Car #15 Bentley Flying Spur
+      const bentley = getVehicleById('bentley_sedan')!;
+      expect(bentley.massKg).toBe(2437);
+      expect(bentley.zeroToHundredSec).toBe(3.7);
+      expect(bentley.topSpeedKph).toBe(333);
+      expect(bentley.winsRequired).toBe(13);
 
-      // Car #25 Pagani Huayra
-      const pagani = getVehicleById('pagani_v12')!;
+      // Car #25 Pagani Utopia
+      const pagani = getVehicleById('pagani_utopia')!;
       expect(pagani.index).toBe(25);
       expect(pagani.massKg).toBe(1280);
       expect(pagani.zeroToHundredSec).toBe(2.7);
       expect(pagani.topSpeedKph).toBe(360);
-      expect(pagani.winsRequired).toBe(22);
+      expect(pagani.winsRequired).toBe(23);
       expect(pagani.hasTransparentEngineBay).toBe(true);
 
-      // Car #27 Bugatti Chiron
-      const chiron = getVehicleById('hyper')!;
-      expect(chiron.massKg).toBe(1995);
-      expect(chiron.zeroToHundredSec).toBe(2.4);
-      expect(chiron.topSpeedKph).toBe(420);
-      expect(chiron.winsRequired).toBe(24);
+      // Car #27 Bugatti Bolide
+      const bolide = getVehicleById('bugatti_bolide')!;
+      expect(bolide.massKg).toBe(1450);
+      expect(bolide.zeroToHundredSec).toBe(2.2);
+      expect(bolide.topSpeedKph).toBe(440);
+      expect(bolide.winsRequired).toBe(25);
 
-      // Car #28 Rimac Nevera
-      const nevera = getVehicleById('ev_proto')!;
+      // Car #30 Rimac Nevera
+      const nevera = getVehicleById('rimac_nevera')!;
       expect(nevera.topSpeedKph).toBe(412);
-      expect(nevera.zeroToHundredSec).toBe(1.85);
-      expect(nevera.winsRequired).toBe(25);
-
-      // Car #34 Jet Thrust Supersonic Concept
-      const jet = getVehicleById('jet_thrust')!;
-      expect(jet.index).toBe(34);
-      expect(jet.massKg).toBe(2400);
-      expect(jet.zeroToHundredSec).toBe(1.65);
-      expect(jet.topSpeedKph).toBe(485);
-      expect(jet.winsRequired).toBe(31);
-      expect(jet.drivetrain).toBe('JET');
-      expect(jet.redlineRpm).toBe(15000);
+      expect(nevera.zeroToHundredSec).toBe(1.74);
+      expect(nevera.winsRequired).toBe(28);
     });
 
     it('verifies lookup functions and aliases work reliably', () => {
-      expect(getVehicleByIndex(1)?.id).toBe('scooter');
-      expect(getVehicleByIndex(34)?.id).toBe('jet_thrust');
+      expect(getVehicleByIndex(1)?.id).toBe('mini_jcw');
+      expect(getVehicleByIndex(30)?.id).toBe('rimac_nevera');
       expect(getVehicleByIndex(0)).toBeUndefined();
-      expect(getVehicleByIndex(35)).toBeUndefined();
+      expect(getVehicleByIndex(31)).toBeUndefined();
 
       // Lookup by folder name
-      expect(getVehicleById('car_01')?.id).toBe('scooter');
-      expect(getVehicleById('car_25')?.id).toBe('pagani_v12');
+      expect(getVehicleById('car_01')?.id).toBe('mini_jcw');
+      expect(getVehicleById('car_25')?.id).toBe('pagani_utopia');
 
       // Lookup by alias
-      expect(getVehicleById('euro_tourer')?.id).toBe('classic_muscle');
-      expect(getVehicleById('hyper_v12')?.id).toBe('ferrari_v8');
-      expect(getVehicleById('lemans_gt')?.id).toBe('cyber_bike');
+      expect(getVehicleById('mini')?.id).toBe('mini_jcw');
+      expect(getVehicleById('bentley')?.id).toBe('bentley_sedan');
+      expect(getVehicleById('laferrari')?.id).toBe('ferrari_laferrari');
 
       // Unlocked state check
-      expect(isVehicleUnlocked('scooter', 0)).toBe(true);
-      expect(isVehicleUnlocked('jdm_rotary', 0)).toBe(false);
-      expect(isVehicleUnlocked('jdm_rotary', 1)).toBe(true);
-      expect(isVehicleUnlocked('jet_thrust', 30)).toBe(false);
-      expect(isVehicleUnlocked('jet_thrust', 31)).toBe(true);
+      expect(isVehicleUnlocked('mini_jcw', 0)).toBe(true);
+      expect(isVehicleUnlocked('hot_hatch', 0)).toBe(true);
+      expect(isVehicleUnlocked('golf_r', 0)).toBe(false);
+      expect(isVehicleUnlocked('golf_r', 1)).toBe(true);
+      expect(isVehicleUnlocked('rimac_nevera', 27)).toBe(false);
+      expect(isVehicleUnlocked('rimac_nevera', 28)).toBe(true);
 
-      expect(getUnlockedVehicleCount(0)).toBe(3); // 3 starter cars
-      expect(getUnlockedVehicleCount(1)).toBe(4);
-      expect(getUnlockedVehicleCount(31)).toBe(34); // all 34 unlocked
+      expect(getUnlockedVehicleCount(0)).toBe(2); // 2 free starter cars
+      expect(getUnlockedVehicleCount(1)).toBe(3);
+      expect(getUnlockedVehicleCount(28)).toBe(30); // all 30 unlocked
     });
   });
 
@@ -540,55 +535,107 @@ describe('Part 4 / Milestone M4: 34 Modular Vehicle Paks & 3D Cockpits', () => {
   });
 
   // ==========================================================================
-  // 5. 34 BESPOKE VISUAL ARCHETYPES & SIGNATURE GEOMETRY (F33)
   // ==========================================================================
-  describe('F33: 34 Bespoke Visual Archetypes & Signature Geometry', () => {
-    it('verifies Scooter (Car #1) 2-wheel inline geometry, rider silhouette, and hidden helper wheels', () => {
-      const scooterSpec = getVehicleById('scooter')!;
-      const model = buildVehicle(scooterSpec, 0);
+  // 5. 30 BESPOKE VISUAL ARCHETYPES & SIGNATURE GEOMETRY (F33)
+  // ==========================================================================
+  describe('F33: 30 Bespoke Visual Archetypes & Signature Geometry', () => {
+    it('verifies Mini Cooper JCW (Car #1) halo lights, hex grille with red bar, scoop, and spoiler', () => {
+      const miniSpec = getVehicleById('mini_jcw')!;
+      const model = buildVehicle(miniSpec, 0);
 
-      // Inline front and rear wheels along x = 0
-      expect(model.wheels.fl.group.position.x).toBe(0);
-      expect(model.wheels.rl.group.position.x).toBe(0);
-      expect(model.wheels.fl.group.position.z).toBeGreaterThan(0.5);
-      expect(model.wheels.rl.group.position.z).toBeLessThan(-0.5);
-
-      // Helper wheels hidden for physics & test contract compatibility
-      expect(model.wheels.fr.group.visible).toBe(false);
-      expect(model.wheels.rr.group.visible).toBe(false);
-      expect(model.wheels.fr.group.position.y).toBe(-10);
-      expect(model.wheels.rr.group.position.y).toBe(-10);
-
-      // 4 brake discs and materials present
+      // Check 4 wheels and brakes
+      expect(model.wheels.fl).toBeDefined();
+      expect(model.wheels.fr).toBeDefined();
+      expect(model.wheels.rl).toBeDefined();
+      expect(model.wheels.rr).toBeDefined();
       expect(model.brakeDiscs.length).toBe(4);
-      expect(model.brakeDiscMaterials.length).toBe(4);
 
-      // 3D Rider Silhouette with helmet exists in bodyworkGroup
-      const rider = model.bodyworkGroup.getObjectByName('ScooterRiderSilhouette');
-      expect(rider).toBeDefined();
-      expect(rider).toBeInstanceOf(THREE.Group);
-      expect(rider!.children.length).toBeGreaterThanOrEqual(3); // Torso, helmet, visor, arms
+      // Check for round halo LED lights and hex grille with red bar
+      let foundHalo = false;
+      let foundRedBar = false;
+      let foundRoofSpoiler = false;
 
-      // Cockpit interior: motorcycle handlebars
-      expect(model.cockpitInterior.steeringWheelGroup.children.length).toBeGreaterThanOrEqual(3);
+      model.bodyworkGroup.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          if (obj.geometry instanceof THREE.TorusGeometry && obj.position.z > 1.5) {
+            foundHalo = true;
+          }
+          if (obj.geometry instanceof THREE.BoxGeometry) {
+            const p = (obj.geometry as THREE.BoxGeometry).parameters;
+            if (p.height < 0.05 && p.depth < 0.08 && p.width > 0.6) {
+              foundRedBar = true;
+            }
+            if (p.width > 1.0 && obj.position.y > 1.3 && obj.position.z < -1.5) {
+              foundRoofSpoiler = true;
+            }
+          }
+        }
+      });
+
+      expect(foundHalo).toBe(true);
+      expect(foundRedBar).toBe(true);
+      expect(foundRoofSpoiler).toBe(true);
     });
 
-    it('verifies Bugatti W16 (Car #27) horseshoe grille, sweeping C-line contour, center spine, and quad exhausts', () => {
-      const hyperSpec = getVehicleById('hyper')!;
-      const model = buildVehicle(hyperSpec, 0);
+    it('verifies Bentley Flying Spur (Car #15) grand matrix grille, Flying B mascot, and crystal round headlights', () => {
+      const bentleySpec = getVehicleById('bentley_sedan')!;
+      const model = buildVehicle(bentleySpec, 0);
 
-      // Check for horseshoe grille, C-lines, and center spine in bodyworkGroup
+      let foundMatrix = false;
+      let foundFlyingB = false;
+
+      model.bodyworkGroup.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          if (obj.geometry instanceof THREE.BoxGeometry && obj.position.z > 2.4) {
+            const p = (obj.geometry as THREE.BoxGeometry).parameters;
+            if (p.width > 0.7 && p.height > 0.5) foundMatrix = true;
+          }
+          if (obj.geometry instanceof THREE.ConeGeometry && obj.position.y > 1.0) {
+            foundFlyingB = true;
+          }
+        }
+      });
+
+      expect(foundMatrix).toBe(true);
+      expect(foundFlyingB).toBe(true);
+    });
+
+    it('verifies Ferrari LaFerrari (Car #26) F1 pointed nosecone with keel, nostrils, and black canopy roof', () => {
+      const feSpec = getVehicleById('ferrari_laferrari')!;
+      const model = buildVehicle(feSpec, 0);
+
+      let foundKeel = false;
+      let nostrilCount = 0;
+
+      model.bodyworkGroup.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          if (obj.geometry instanceof THREE.BoxGeometry) {
+            const p = (obj.geometry as THREE.BoxGeometry).parameters;
+            if (p.width < 0.05 && p.depth > 0.5 && obj.position.z > 1.8) foundKeel = true;
+            if (p.height < 0.06 && p.depth > 0.25 && obj.position.y > 0.6 && obj.position.z > 1.0) {
+              nostrilCount++;
+            }
+          }
+        }
+      });
+
+      expect(foundKeel).toBe(true);
+      expect(nostrilCount).toBeGreaterThanOrEqual(2);
+    });
+
+    it('verifies Bugatti Bolide (Car #27) horseshoe grille, sweeping C-line contour, center spine, and dual lightbars', () => {
+      const bolideSpec = getVehicleById('bugatti_bolide')!;
+      const model = buildVehicle(bolideSpec, 0);
+
       let foundHorseshoe = false;
       let cLineCount = 0;
       let centerSpineFound = false;
 
       model.bodyworkGroup.traverse((obj) => {
         if (obj instanceof THREE.Mesh) {
-          // Check horseshoe arch geometry
-          if (obj.geometry instanceof THREE.TorusGeometry && obj.position.y > 0.05 && obj.position.y < 0.15) {
+          if (obj.geometry instanceof THREE.TorusGeometry && obj.position.z > 2.0) {
             foundHorseshoe = true;
           }
-          // Check center dorsal crease (thin strip along z)
           if (obj.geometry instanceof THREE.BoxGeometry) {
             const params = (obj.geometry as THREE.BoxGeometry).parameters;
             if (params.width < 0.03 && params.depth > 3.0) {
@@ -596,9 +643,8 @@ describe('Part 4 / Milestone M4: 34 Modular Vehicle Paks & 3D Cockpits', () => {
             }
           }
         }
-        if (obj instanceof THREE.Group && obj.children.length >= 2) {
-          // Flank C-line group
-          if (Math.abs(obj.position.x) > 0.9 && Math.abs(obj.position.x) < 1.1) {
+        if (obj instanceof THREE.Group && obj.children.length >= 1) {
+          if (Math.abs(obj.position.x) > 0.9 && Math.abs(obj.position.x) < 1.15) {
             cLineCount++;
           }
         }
@@ -606,94 +652,119 @@ describe('Part 4 / Milestone M4: 34 Modular Vehicle Paks & 3D Cockpits', () => {
 
       expect(foundHorseshoe).toBe(true);
       expect(centerSpineFound).toBe(true);
-      expect(cLineCount).toBe(2); // Left and Right C-lines
+      expect(cLineCount).toBe(2);
       expect(model.wingMesh.name).toBe('ActiveAirfoilBlade');
     });
 
-    it('verifies Formula 1 (Car #32) exposed wishbones, titanium HALO, and F1 butterfly wheel', () => {
-      const f1Spec = getVehicleById('f1')!;
-      const model = buildVehicle(f1Spec, 0);
+    it('verifies Ford Ranger Raptor (Car #06) twin-bar grille, front skid plate, and sailplane bar', () => {
+      const rangerSpec = getVehicleById('ranger_truck')!;
+      const model = buildVehicle(rangerSpec, 0);
 
-      // Check for exposed suspension wishbones and HALO safety hoop
-      let wishboneCount = 0;
-      let haloFound = false;
+      let foundSkidPlate = false;
+      let foundSailplane = false;
 
       model.bodyworkGroup.traverse((obj) => {
-        if (obj instanceof THREE.Group && obj.position.y > 0.7 && Math.abs(obj.position.z - 0.25) < 0.1) {
-          haloFound = true;
-        }
-        if (obj instanceof THREE.Group && Math.abs(obj.position.x) > 0.35 && Math.abs(obj.position.x) < 0.55) {
-          wishboneCount++;
-        }
-      });
-
-      expect(haloFound).toBe(true);
-      expect(wishboneCount).toBeGreaterThanOrEqual(4); // 4 corners double-wishbones
-
-      // F1 Cockpit butterfly steering yoke
-      expect(model.cockpitInterior.steeringWheelMesh.name).toBe('SteeringWheel');
-      expect(model.cockpitInterior.shiftLeds.length).toBe(9);
-    });
-
-    it('verifies Heavy Commercial: Semi Rig (#14) twin chrome stacks and dually rear wheels', () => {
-      const semiSpec = getVehicleById('semi_rig')!;
-      const model = buildVehicle(semiSpec, 0);
-
-      // Check twin vertical exhaust stacks
-      let stackCount = 0;
-      model.bodyworkGroup.traverse((obj) => {
-        if (obj instanceof THREE.Mesh && obj.geometry instanceof THREE.CylinderGeometry) {
-          const params = (obj.geometry as THREE.CylinderGeometry).parameters;
-          if (params.height > 2.0) {
-            stackCount++;
+        if (obj instanceof THREE.Mesh) {
+          if (obj.geometry instanceof THREE.BoxGeometry) {
+            const p = (obj.geometry as THREE.BoxGeometry).parameters;
+            if (p.width > 0.6 && obj.position.y < 0.45 && obj.position.z > 2.5) foundSkidPlate = true;
+            if (p.height > 0.4 && obj.position.z < -0.3 && obj.position.z > -0.6) foundSailplane = true;
           }
         }
       });
-      expect(stackCount).toBe(2); // Left and right twin chrome vertical exhaust stacks
 
-      // Rear wheels have dually extra tires
-      expect(model.wheels.rl.group.children.length).toBeGreaterThan(1);
-      expect(model.wheels.rr.group.children.length).toBeGreaterThan(1);
+      expect(foundSkidPlate).toBe(true);
+      expect(foundSailplane).toBe(true);
     });
 
-    it('verifies Baja Truck (#09) prerunner bumper, KC spotlights, and bed-mounted dual spare tires', () => {
-      const truckSpec = getVehicleById('truck')!;
-      const model = buildVehicle(truckSpec, 0);
+    it('verifies Global 4x4 Overland (Car #10) lifted suspension, snorkel tube, and roof rack with gear', () => {
+      const overlandSpec = getVehicleById('overland_truck')!;
+      const model = buildVehicle(overlandSpec, 0);
 
-      // Check for 2 spare tires mounted in bed
-      let spareTireCount = 0;
+      let foundSnorkel = false;
+      let foundRoofRack = false;
+
       model.bodyworkGroup.traverse((obj) => {
-        if (obj instanceof THREE.Mesh && obj.geometry instanceof THREE.CylinderGeometry) {
-          const params = (obj.geometry as THREE.CylinderGeometry).parameters;
-          if (params.radiusTop > 0.4 && params.radiusBottom > 0.4 && obj.position.z < -1.0) {
-            spareTireCount++;
+        if (obj instanceof THREE.Mesh) {
+          if (obj.geometry instanceof THREE.CylinderGeometry && obj.position.x > 0.8 && obj.position.y > 1.0) {
+            foundSnorkel = true;
+          }
+        }
+        if (obj instanceof THREE.Group && obj.position.y > 1.7) {
+          foundRoofRack = true;
+        }
+      });
+
+      expect(foundSnorkel).toBe(true);
+      expect(foundRoofRack).toBe(true);
+    });
+
+    it('verifies Porsche 911 Targa (Car #17) silver Targa roll hoop and curved rear glass dome', () => {
+      const targaSpec = getVehicleById('porsche_targa')!;
+      const model = buildVehicle(targaSpec, 0);
+
+      let foundHoop = false;
+      let foundDome = false;
+
+      model.bodyworkGroup.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          if (obj.geometry instanceof THREE.BoxGeometry) {
+            const p = (obj.geometry as THREE.BoxGeometry).parameters;
+            if (p.width > 1.5 && obj.position.y > 1.0 && Math.abs(obj.position.z + 0.22) < 0.1) foundHoop = true;
+          }
+          if (obj.geometry instanceof THREE.SphereGeometry && obj.position.z < -0.5) {
+            foundDome = true;
           }
         }
       });
-      expect(spareTireCount).toBe(2); // Dual 37-inch spare wheels in bed cage
+
+      expect(foundHoop).toBe(true);
+      expect(foundDome).toBe(true);
     });
 
-    it('verifies Porsche GT3 RS (#18) front fender louvers and swan-neck DRS wing', () => {
-      const gt3Spec = getVehicleById('porsche_gt3')!;
-      const model = buildVehicle(gt3Spec, 0);
+    it('verifies Pagani Utopia (Car #25) twin fender pontoons, central wiper, and quad exhaust cluster', () => {
+      const utopiaSpec = getVehicleById('pagani_utopia')!;
+      const model = buildVehicle(utopiaSpec, 0);
 
-      // Check for fender cooling louvers
-      let louverCount = 0;
+      let foundWiper = false;
+      let foundQuad = false;
+
+      model.bodyworkGroup.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          if (obj.geometry instanceof THREE.BoxGeometry) {
+            const p = (obj.geometry as THREE.BoxGeometry).parameters;
+            if (p.height > 0.5 && p.width < 0.03 && obj.position.z > 0.5) foundWiper = true;
+          }
+        }
+        if (obj instanceof THREE.Group && obj.position.z < -2.2) {
+          foundQuad = true;
+        }
+      });
+
+      expect(foundWiper).toBe(true);
+      expect(foundQuad).toBe(true);
+    });
+
+    it('verifies Terzo EV (Car #28) low geometric wedge, cyan glowing LED streaks, and aero disc wheels', () => {
+      const terzoSpec = getVehicleById('terzo_ev')!;
+      const model = buildVehicle(terzoSpec, 0);
+
+      let cyanStreakCount = 0;
       model.bodyworkGroup.traverse((obj) => {
         if (obj instanceof THREE.Mesh && obj.geometry instanceof THREE.BoxGeometry) {
-          const params = (obj.geometry as THREE.BoxGeometry).parameters;
-          if (params.height < 0.02 && params.depth < 0.05 && params.width > 0.15) {
-            louverCount++;
+          const p = (obj.geometry as THREE.BoxGeometry).parameters;
+          if (p.depth > 1.5 && Math.abs(obj.position.x) > 0.9) {
+            cyanStreakCount++;
           }
         }
       });
-      expect(louverCount).toBeGreaterThanOrEqual(8); // 4 gills on each front fender
-      expect(model.wingGroup.position.y).toBeGreaterThan(1.2); // High swan-neck wing
+
+      expect(cyanStreakCount).toBe(2);
     });
 
-    it('verifies that ALL 34 roster vehicles build successfully with complete Three.js hierarchy', () => {
+    it('verifies that ALL 30 roster vehicles build successfully with complete Three.js hierarchy', () => {
       const allSpecs = getAllVehicles();
-      expect(allSpecs.length).toBe(34);
+      expect(allSpecs.length).toBe(30);
 
       for (const spec of allSpecs) {
         const model = buildVehicle(spec, 0);

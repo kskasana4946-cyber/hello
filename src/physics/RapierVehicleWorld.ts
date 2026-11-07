@@ -438,22 +438,104 @@ export class RapierVehicleWorld {
     }
   }
 
-  public resetVehicleState(vehicleId = 'player'): void {
+  public resetVehicleState(
+    vehicleIdOrPos?: string | Vec3Tuple,
+    posOrForward?: Vec3Tuple,
+    maybeForward?: Vec3Tuple
+  ): void {
+    let vehicleId = 'player';
+    let customPos: Vec3Tuple | undefined;
+    let customForward: Vec3Tuple | undefined;
+
+    if (typeof vehicleIdOrPos === 'string') {
+      vehicleId = vehicleIdOrPos;
+      if (Array.isArray(posOrForward)) {
+        customPos = posOrForward;
+      }
+      if (Array.isArray(maybeForward)) {
+        customForward = maybeForward;
+      }
+    } else if (Array.isArray(vehicleIdOrPos)) {
+      vehicleId = 'player';
+      customPos = vehicleIdOrPos;
+      if (Array.isArray(posOrForward)) {
+        customForward = posOrForward;
+      }
+    }
+
     const st = this.vehicles.get(vehicleId);
     if (!st) return;
+
+    const frame = this.splineProvider.getFrameAtArcLength(0);
+    const rideHeight = 0.35;
+    const isNormalUp = Math.abs(frame.normal[1]) >= Math.abs(frame.binormal[1]);
+    const U = isNormalUp ? frame.normal : frame.binormal;
+    const N = isNormalUp ? frame.binormal : frame.normal;
+
+    const defaultPos: Vec3Tuple = [
+      frame.position[0] + U[0] * rideHeight,
+      frame.position[1] + U[1] * rideHeight,
+      frame.position[2] + U[2] * rideHeight,
+    ];
+    const defaultForward: Vec3Tuple = [...frame.tangent];
+
+    const targetPos: Vec3Tuple = customPos ? [customPos[0], customPos[1], customPos[2]] : defaultPos;
+    let targetForward: Vec3Tuple = customForward
+      ? [customForward[0], customForward[1], customForward[2]]
+      : defaultForward;
+    const fLen = Math.hypot(targetForward[0], targetForward[1], targetForward[2]);
+    if (fLen > 1e-6) {
+      targetForward = [targetForward[0] / fLen, targetForward[1] / fLen, targetForward[2] / fLen];
+    } else {
+      targetForward = [...defaultForward];
+    }
+
+    st.position = [...targetPos];
+    st.velocity = [0, 0, 0];
+    st.forward = [...targetForward];
+    st.up = [...U];
+    st.right = [...N];
     st.speedMs = 0;
     st.speedKph = 0;
-    st.velocity = [0, 0, 0];
     st.pitchRad = 0;
     st.rollRad = 0;
+    st.yawRad = Math.atan2(st.forward[0], st.forward[2]);
     st.gear = 1;
     st.rpm = 1000;
     st.alongOffset = 0;
     st.lateralOffset = 0;
+    st.verticalOffset = rideHeight;
     st.nitroPercent = 100;
     st.brakeTempCelsius = 20;
+    st.airborne = false;
+    st.airborneTimeSec = 0;
+    st.onSkybridgeDeck = false;
+    st.barrierContact = false;
+    st.plasmaSurgeRemainingSec = 0;
+    st.activeSpeedMultiplier = 1.0;
+    st.shiftShockRemainingSec = 0;
+
     for (const w of st.wheels) {
+      w.worldMountPos = [...st.position];
+      w.worldContactPos = [st.position[0], st.position[1] - rideHeight, st.position[2]];
+      w.suspensionLength = 0.35;
+      w.compression = 0.05;
+      w.compressionVelocity = 0;
+      w.inContact = true;
+      w.damperForceN = 0;
+      w.antiRollForceN = 0;
+      w.slipAngleRad = 0;
+      w.lateralForceN = 0;
+      w.longitudinalForceN = 0;
+      w.rotationAngleRad = 0;
       w.tireTempCelsius = 85.0;
+    }
+
+    const body = this.rigidBodies.get(vehicleId);
+    if (body) {
+      body.setTranslation({ x: st.position[0], y: st.position[1], z: st.position[2] }, true);
+      body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     }
   }
 

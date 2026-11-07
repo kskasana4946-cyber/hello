@@ -1,6 +1,6 @@
 // src/career/ProgressionManager.ts
 // Win-by-Win Career Unlock Ladder, Economy & Sandbox State Machine (M5: F33)
-// 1 Win = +1 New Car (Wins 1..31 -> #4 jdm_rotary .. #34 jet_thrust)
+// 1 Win = +1 New Car (Wins 1..28 -> #3 golf_r .. #30 rimac_nevera)
 // CR & Driver XP Economy across 6 performance categories
 // Early CR purchase boundary validation & non-destructive Sandbox Unlock-All toggle
 
@@ -13,7 +13,7 @@ import {
 } from '../vehicles/VehicleRoster';
 
 export const PROGRESSION_STORAGE_KEY = 'apex_gp_progression_v1';
-export const TIER_0_STARTER_IDS: readonly string[] = ['scooter', 'hot_hatch', 'roadster'];
+export const TIER_0_STARTER_IDS: readonly string[] = ['mini_jcw', 'hot_hatch'];
 
 export interface CareerRewardBreakdown {
   podiumCredits: number;
@@ -219,7 +219,7 @@ export class ProgressionManager {
 
   /**
    * Returns list of currently unlocked vehicle IDs.
-   * If Sandbox is active, returns all 34 vehicle IDs.
+   * If Sandbox is active, returns all 30 vehicle IDs.
    * Otherwise returns all vehicles earned through wins or early CR purchases.
    */
   public getUnlockedVehicleIds(): string[] {
@@ -245,7 +245,7 @@ export class ProgressionManager {
   }
 
   /**
-   * Toggles the non-destructive [🔓 SANDBOX: UNLOCK ALL 34 CARS] mode.
+   * Toggles the non-destructive [🔓 SANDBOX: UNLOCK ALL 30 CARS] mode.
    * When turned OFF, cleanly restores the authentic career progression state.
    */
   public toggleSandboxUnlockAll(forceState?: boolean): SandboxToggleResult {
@@ -255,6 +255,17 @@ export class ProgressionManager {
       totalWins: this.totalWins,
       unlockedVehicleIds: this.getUnlockedVehicleIds(),
     };
+  }
+
+  /**
+   * Unconditionally unlocks all 30 vehicles in Sandbox mode.
+   */
+  public unlockAllSandBox(): SandboxToggleResult {
+    return this.toggleSandboxUnlockAll(true);
+  }
+
+  public unlockAllSandbox(): SandboxToggleResult {
+    return this.unlockAllSandBox();
   }
 
   /**

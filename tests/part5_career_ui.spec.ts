@@ -42,31 +42,30 @@ describe('Milestone M5: Career Unlock Ladder, Dyno Boot Screen & 4-Tab Paddock U
   });
 
   // ==========================================================================
-  // 1. Win-by-Win Career Unlock Ladder (0..31 Wins & Overflow)
+  // 1. Win-by-Win Career Unlock Ladder (0..28 Wins & Overflow)
   // ==========================================================================
   describe('1. Win-by-Win Career Unlock Ladder', () => {
-    it('initializes at 0 wins with exactly 3 Tier 0 starter cars unlocked', () => {
+    it('initializes at 0 wins with exactly 2 Tier 0 starter cars unlocked', () => {
       const state = progression.getState();
       expect(state.totalWins).toBe(0);
       expect(state.credits).toBe(0);
       expect(state.driverXp).toBe(0);
       expect(state.sandboxUnlockedAll).toBe(false);
-      expect(state.unlockedVehicleIds).toEqual(['scooter', 'hot_hatch', 'roadster']);
-      expect(progression.isVehicleUnlocked('scooter')).toBe(true);
+      expect(state.unlockedVehicleIds).toEqual(['mini_jcw', 'hot_hatch']);
+      expect(progression.isVehicleUnlocked('mini_jcw')).toBe(true);
       expect(progression.isVehicleUnlocked('hot_hatch')).toBe(true);
-      expect(progression.isVehicleUnlocked('roadster')).toBe(true);
-      expect(progression.isVehicleUnlocked('jdm_rotary')).toBe(false);
-      expect(progression.isVehicleUnlocked('jet_thrust')).toBe(false);
+      expect(progression.isVehicleUnlocked('golf_r')).toBe(false);
+      expect(progression.isVehicleUnlocked('rimac_nevera')).toBe(false);
     });
 
-    it('unlocks cars sequentially from win 1 (jdm_rotary) through win 31 (jet_thrust)', () => {
-      // 1 Win = +1 New Car
-      for (let w = 1; w <= 31; w++) {
+    it('unlocks cars sequentially from win 1 (golf_r) through win 28 (rimac_nevera)', () => {
+      // 1 Win = +1 New Car (Wins 1..28 unlock cars #3..#30)
+      for (let w = 1; w <= 28; w++) {
         const report = progression.recordRaceResult({ position: 1 });
         expect(progression.totalWins).toBe(w);
-        expect(progression.getUnlockedVehicleIds().length).toBe(3 + w);
+        expect(progression.getUnlockedVehicleIds().length).toBe(2 + w);
 
-        const expectedCar = VEHICLE_ROSTER[2 + w]; // index 3 is car #4
+        const expectedCar = VEHICLE_ROSTER[1 + w]; // index 2 is car #3
         expect(report.newlyUnlockedVehicle).not.toBeNull();
         expect(report.newlyUnlockedVehicle!.id).toBe(expectedCar.id);
         expect(report.turntableRevealActive).toBe(true);
@@ -74,25 +73,25 @@ describe('Milestone M5: Career Unlock Ladder, Dyno Boot Screen & 4-Tab Paddock U
         expect(progression.isVehicleUnlocked(expectedCar.id)).toBe(true);
       }
 
-      expect(progression.getUnlockedVehicleIds().length).toBe(34);
-      expect(progression.isVehicleUnlocked('jet_thrust')).toBe(true);
+      expect(progression.getUnlockedVehicleIds().length).toBe(30);
+      expect(progression.isVehicleUnlocked('rimac_nevera')).toBe(true);
     });
 
-    it('handles win 32+ without car #35 overflow (newlyUnlockedVehicle === null)', () => {
-      // Advance to 31 wins
-      for (let w = 1; w <= 31; w++) {
+    it('handles win 29+ without car #31 overflow (newlyUnlockedVehicle === null)', () => {
+      // Advance to 28 wins
+      for (let w = 1; w <= 28; w++) {
         progression.recordRaceResult({ position: 1 });
       }
-      expect(progression.totalWins).toBe(31);
-      expect(progression.getUnlockedVehicleIds().length).toBe(34);
+      expect(progression.totalWins).toBe(28);
+      expect(progression.getUnlockedVehicleIds().length).toBe(30);
 
-      // 32nd win
-      const report32 = progression.recordRaceResult({ position: 1 });
-      expect(progression.totalWins).toBe(32);
-      expect(progression.getUnlockedVehicleIds().length).toBe(34);
-      expect(report32.newlyUnlockedVehicle).toBeNull();
-      expect(report32.turntableRevealActive).toBe(false);
-      expect(report32.podiumStageActive).toBe(true);
+      // 29th win
+      const report29 = progression.recordRaceResult({ position: 1 });
+      expect(progression.totalWins).toBe(29);
+      expect(progression.getUnlockedVehicleIds().length).toBe(30);
+      expect(report29.newlyUnlockedVehicle).toBeNull();
+      expect(report29.turntableRevealActive).toBe(false);
+      expect(report29.podiumStageActive).toBe(true);
     });
 
     it('awards CR and Driver XP for 2nd and 3rd place finishes without incrementing totalWins', () => {
@@ -150,41 +149,41 @@ describe('Milestone M5: Career Unlock Ladder, Dyno Boot Screen & 4-Tab Paddock U
   // ==========================================================================
   describe('2. Early CR Vehicle Purchase Boundary Validation', () => {
     it('rejects purchase at boundary credits = creditCost - 1', () => {
-      const target = getVehicleById('jdm_rotary')!;
+      const target = getVehicleById('golf_r')!;
       const cost = target.creditCost;
       expect(cost).toBeGreaterThan(0);
 
       // Set credits to cost - 1
       progression.credits = cost - 1;
-      const res = progression.purchaseVehicleWithCredits('jdm_rotary');
+      const res = progression.purchaseVehicleWithCredits('golf_r');
       expect(res.purchased).toBe(false);
       expect(res.reason).toBe('INSUFFICIENT_CREDITS');
       expect(res.requiredCredits).toBe(cost);
       expect(progression.credits).toBe(cost - 1);
-      expect(progression.isVehicleUnlocked('jdm_rotary')).toBe(false);
+      expect(progression.isVehicleUnlocked('golf_r')).toBe(false);
     });
 
     it('accepts purchase at boundary credits = creditCost, leaves 0 credits, and unlocks car', () => {
-      const target = getVehicleById('jdm_rotary')!;
+      const target = getVehicleById('golf_r')!;
       const cost = target.creditCost;
 
       // Set credits to exact cost
       progression.credits = cost;
-      const res = progression.purchaseVehicleWithCredits('jdm_rotary');
+      const res = progression.purchaseVehicleWithCredits('golf_r');
       expect(res.purchased).toBe(true);
       expect(res.alreadyUnlocked).toBe(false);
       expect(res.deductedCredits).toBe(cost);
       expect(progression.credits).toBe(0);
-      expect(progression.isVehicleUnlocked('jdm_rotary')).toBe(true);
-      expect(progression.getUnlockedVehicleIds()).toContain('jdm_rotary');
+      expect(progression.isVehicleUnlocked('golf_r')).toBe(true);
+      expect(progression.getUnlockedVehicleIds()).toContain('golf_r');
     });
 
     it('deducts 0 CR when re-purchasing an already unlocked vehicle', () => {
       progression.credits = 100000;
-      progression.purchaseVehicleWithCredits('jdm_rotary');
+      progression.purchaseVehicleWithCredits('golf_r');
       const creditsAfterFirst = progression.credits;
 
-      const dupRes = progression.purchaseVehicleWithCredits('jdm_rotary');
+      const dupRes = progression.purchaseVehicleWithCredits('golf_r');
       expect(dupRes.purchased).toBe(true);
       expect(dupRes.alreadyUnlocked).toBe(true);
       expect(dupRes.deductedCredits).toBe(0);
@@ -201,23 +200,23 @@ describe('Milestone M5: Career Unlock Ladder, Dyno Boot Screen & 4-Tab Paddock U
   });
 
   // ==========================================================================
-  // 3. Non-Destructive [🔓 SANDBOX: UNLOCK ALL 34 CARS] Toggle & Restore
+  // 3. Non-Destructive [🔓 SANDBOX: UNLOCK ALL 30 CARS] Toggle & Restore
   // ==========================================================================
-  describe('3. [🔓 SANDBOX: UNLOCK ALL 34 CARS] Toggle & Restore', () => {
-    it('non-destructively unlocks all 34 cars and cleanly restores career progression on toggle OFF', () => {
-      // Simulate 2 career wins (5 cars unlocked)
+  describe('3. [🔓 SANDBOX: UNLOCK ALL 30 CARS] Toggle & Restore', () => {
+    it('non-destructively unlocks all 30 cars and cleanly restores career progression on toggle OFF', () => {
+      // Simulate 2 career wins (4 cars unlocked: 2 starter + 2 wins)
       progression.recordRaceResult({ position: 1 });
       progression.recordRaceResult({ position: 1 });
       expect(progression.totalWins).toBe(2);
-      expect(progression.getUnlockedVehicleIds().length).toBe(5);
+      expect(progression.getUnlockedVehicleIds().length).toBe(4);
       const creditsBefore = progression.credits;
 
       // Toggle Sandbox ON
       const onState = progression.toggleSandboxUnlockAll();
       expect(onState.sandboxUnlockedAll).toBe(true);
-      expect(onState.unlockedVehicleIds.length).toBe(34);
-      expect(progression.isVehicleUnlocked('jet_thrust')).toBe(true);
-      expect(progression.isVehicleUnlocked('f1')).toBe(true);
+      expect(onState.unlockedVehicleIds.length).toBe(30);
+      expect(progression.isVehicleUnlocked('rimac_nevera')).toBe(true);
+      expect(progression.isVehicleUnlocked('terzo_ev')).toBe(true);
       // Total wins and credits remain untouched
       expect(progression.totalWins).toBe(2);
       expect(progression.credits).toBe(creditsBefore);
@@ -225,23 +224,24 @@ describe('Milestone M5: Career Unlock Ladder, Dyno Boot Screen & 4-Tab Paddock U
       // Toggle Sandbox OFF
       const offState = progression.toggleSandboxUnlockAll();
       expect(offState.sandboxUnlockedAll).toBe(false);
-      expect(offState.unlockedVehicleIds.length).toBe(5);
+      expect(offState.unlockedVehicleIds.length).toBe(4);
       expect(progression.totalWins).toBe(2);
       expect(progression.credits).toBe(creditsBefore);
-      expect(progression.isVehicleUnlocked('jet_thrust')).toBe(false);
+      expect(progression.isVehicleUnlocked('rimac_nevera')).toBe(false);
+      expect(progression.isVehicleUnlocked('mini_jcw')).toBe(true);
       expect(progression.isVehicleUnlocked('hot_hatch')).toBe(true);
-      expect(progression.isVehicleUnlocked('jdm_rotary')).toBe(true);
-      expect(progression.isVehicleUnlocked('car')).toBe(true);
+      expect(progression.isVehicleUnlocked('golf_r')).toBe(true);
+      expect(progression.isVehicleUnlocked('gr_yaris')).toBe(true);
     });
   });
 
   // ==========================================================================
-  // 4. Persistence & Corrupted Data Resilience
+  // 4. Persistence & Storage Resilience
   // ==========================================================================
   describe('4. Persistence & Storage Resilience', () => {
     it('persists and restores state accurately across reload', () => {
       progression.recordRaceResult({ position: 1 });
-      progression.purchaseVehicleWithCredits('skyline_gtr');
+      progression.purchaseVehicleWithCredits('ranger_truck');
       const st1 = progression.getState();
 
       const newProg = new ProgressionManager(memoryStorage);
@@ -255,12 +255,12 @@ describe('Milestone M5: Career Unlock Ladder, Dyno Boot Screen & 4-Tab Paddock U
     it('gracefully resets to defaults when encountering corrupted or negative JSON', () => {
       const resBad = progression.loadFromStorage('not_json{{');
       expect(resBad.totalWins).toBe(0);
-      expect(resBad.unlockedVehicleIds).toEqual(['scooter', 'hot_hatch', 'roadster']);
+      expect(resBad.unlockedVehicleIds).toEqual(['mini_jcw', 'hot_hatch']);
 
       const resNeg = progression.loadFromStorage(JSON.stringify({ totalWins: -10, credits: -500 }));
       expect(resNeg.totalWins).toBe(0);
       expect(resNeg.credits).toBe(0);
-      expect(resNeg.unlockedVehicleIds.length).toBe(3);
+      expect(resNeg.unlockedVehicleIds.length).toBe(2);
     });
   });
 
@@ -375,16 +375,16 @@ describe('Milestone M5: Career Unlock Ladder, Dyno Boot Screen & 4-Tab Paddock U
     });
 
     it('allows selection of unlocked vehicles and rejects locked vehicles when Sandbox is OFF', () => {
-      expect(paddock.selectedVehicleId).toBe('scooter');
+      expect(paddock.selectedVehicleId).toBe('mini_jcw');
       // Select another unlocked vehicle
       expect(paddock.selectVehicle('hot_hatch').selectedVehicleId).toBe('hot_hatch');
 
       // Attempt to select locked vehicle
-      expect(paddock.selectVehicle('jet_thrust').selectedVehicleId).toBe('hot_hatch');
+      expect(paddock.selectVehicle('rimac_nevera').selectedVehicleId).toBe('hot_hatch');
 
       // Enable Sandbox
       paddock.toggleSandboxUnlockAll();
-      expect(paddock.selectVehicle('jet_thrust').selectedVehicleId).toBe('jet_thrust');
+      expect(paddock.selectVehicle('rimac_nevera').selectedVehicleId).toBe('rimac_nevera');
     });
 
     it('selects from 12 PBR livery presets (0..11) with valid properties', () => {

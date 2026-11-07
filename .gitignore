@@ -15,3 +15,6 @@ assets/paks/**/*.pak
 .DS_Store
 Thumbs.db
 *.log
+
+# Release packages and staging
+release/

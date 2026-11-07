@@ -67,42 +67,71 @@ export const CANONICAL_TRACK_TO_ALIAS: Record<CanonicalTrackBiomeId, string> = {
   track_alpine: 'track_04',
 };
 
-export const VEHICLE_SLUGS_ORDERED: readonly string[] = [
-  'scooter',        // car_01
-  'hot_hatch',      // car_02
-  'roadster',       // car_03
-  'jdm_rotary',     // car_04
-  'car',            // car_05
-  'skyline_gtr',    // car_06
-  'rally',          // car_07
-  'dune_buggy',     // car_08
-  'truck',          // car_09
-  'classic_muscle', // car_10
-  'muscle',         // car_11
-  'police',         // car_12
-  'swat_armored',   // car_13
-  'semi_rig',       // car_14
-  'bus',            // car_15
-  'kart_shifter',   // car_16
-  'ariel_exo',      // car_17
-  'porsche_gt3',    // car_18
-  'corvette_gt',    // car_19
-  'bike',           // car_20
-  'cyber_bike',     // car_21
-  'ferrari_v8',     // car_22
-  'lambo',          // car_23
-  'mclaren_lt',     // car_24
-  'pagani_v12',     // car_25
-  'koenigsegg',     // car_26
-  'hyper',          // car_27
-  'ev_proto',       // car_28
-  'stock_nascar',   // car_29
-  'indy_open',      // car_30
-  'lmp1',           // car_31
-  'f1',             // car_32
-  'fan_car',        // car_33
-  'jet_thrust',     // car_34
+export const VEHICLE_SLUG_BY_INDEX: readonly string[] = [
+  'mini_jcw',         // car_01
+  'hot_hatch',        // car_02
+  'golf_r',           // car_03
+  'gr_yaris',         // car_04
+  'roadster',         // car_05
+  'ranger_truck',     // car_06
+  'jdm_sedan',        // car_07
+  'trail_suv',        // car_08
+  'sport_mpv',        // car_09
+  'overland_truck',   // car_10
+  'classic_muscle',   // car_11
+  'police_sedan',     // car_12
+  'swat_suv',         // car_13
+  'vip_mpv',          // car_14
+  'bentley_sedan',    // car_15
+  'porsche_cabrio',   // car_16
+  'porsche_targa',    // car_17
+  'urus_suv',         // car_18
+  'trophy_truck',     // car_19
+  'corvette_c8',      // car_20
+  'porsche_gt3',      // car_21
+  'lambo_v12',        // car_22
+  'mclaren_lt',       // car_23
+  'cyber_mpv',        // car_24
+  'pagani_utopia',    // car_25
+  'ferrari_laferrari',// car_26
+  'bugatti_bolide',   // car_27
+  'terzo_ev',         // car_28
+  'koenigsegg_jesko', // car_29
+  'rimac_nevera',     // car_30
 ] as const;
+
+export const VEHICLE_SLUGS_ORDERED = VEHICLE_SLUG_BY_INDEX;
+
+export const LEGACY_VEHICLE_ALIASES: Record<string, string> = {
+  scooter: 'mini_jcw',
+  jdm_rotary: 'jdm_sedan',
+  car: 'jdm_sedan',
+  skyline_gtr: 'jdm_sedan',
+  rally: 'gr_yaris',
+  dune_buggy: 'trail_suv',
+  truck: 'trophy_truck',
+  muscle: 'classic_muscle',
+  swat_armored: 'swat_suv',
+  semi_rig: 'overland_truck',
+  bus: 'sport_mpv',
+  kart_shifter: 'golf_r',
+  ariel_exo: 'roadster',
+  corvette_gt: 'corvette_c8',
+  bike: 'porsche_cabrio',
+  cyber_bike: 'cyber_mpv',
+  ferrari_v8: 'ferrari_laferrari',
+  lambo: 'lambo_v12',
+  pagani_v12: 'pagani_utopia',
+  koenigsegg: 'koenigsegg_jesko',
+  hyper: 'bugatti_bolide',
+  ev_proto: 'rimac_nevera',
+  stock_nascar: 'classic_muscle',
+  indy_open: 'porsche_gt3',
+  lmp1: 'mclaren_lt',
+  f1: 'terzo_ev',
+  fan_car: 'pagani_utopia',
+  jet_thrust: 'rimac_nevera',
+};
 
 export function resolveSkyCanonicalId(input: SkyBiomeId | string): CanonicalSkyBiomeId {
   const clean = input.trim().replace(/^.*\/+/, '');
@@ -133,21 +162,28 @@ export function resolveVehiclePakDir(idOrDir: string | number): {
   if (typeof idOrDir === 'number') {
     const idx = Math.max(1, Math.min(34, Math.floor(idOrDir)));
     const carDir = `car_${String(idx).padStart(2, '0')}`;
-    const slug = VEHICLE_SLUGS_ORDERED[idx - 1];
+    const slug = idx === 34 ? 'jet_thrust' : (idx <= 30 ? VEHICLE_SLUG_BY_INDEX[idx - 1] : `car_${idx}`);
     return { carDir, slug, index: idx, pakPath: `assets/paks/vehicles/${carDir}/vehicle.pak` };
   }
   const clean = idOrDir.trim().toLowerCase();
+  if (clean === 'car_34') {
+    return { carDir: 'car_34', slug: 'jet_thrust', index: 34, pakPath: 'assets/paks/vehicles/car_34/vehicle.pak' };
+  }
   const dirMatch = clean.match(/^car_(\d{1,2})$/);
   if (dirMatch) {
-    const idx = Math.max(1, Math.min(34, parseInt(dirMatch[1], 10)));
+    const idx = Math.max(1, Math.min(30, parseInt(dirMatch[1], 10)));
     const carDir = `car_${String(idx).padStart(2, '0')}`;
-    const slug = VEHICLE_SLUGS_ORDERED[idx - 1];
+    const slug = VEHICLE_SLUG_BY_INDEX[idx - 1];
     return { carDir, slug, index: idx, pakPath: `assets/paks/vehicles/${carDir}/vehicle.pak` };
   }
-  const slugIdx = VEHICLE_SLUGS_ORDERED.indexOf(clean);
+  if (clean === 'scooter') {
+    return { carDir: 'car_01', slug: 'mini_jcw', index: 1, pakPath: 'assets/paks/vehicles/car_01/vehicle.pak' };
+  }
+  const resolvedSlug = LEGACY_VEHICLE_ALIASES[clean] ?? clean;
+  const slugIdx = VEHICLE_SLUG_BY_INDEX.indexOf(resolvedSlug);
   const idx = slugIdx >= 0 ? slugIdx + 1 : 1;
   const carDir = `car_${String(idx).padStart(2, '0')}`;
-  const slug = VEHICLE_SLUGS_ORDERED[idx - 1];
+  const slug = VEHICLE_SLUG_BY_INDEX[idx - 1];
   return { carDir, slug, index: idx, pakPath: `assets/paks/vehicles/${carDir}/vehicle.pak` };
 }
 
@@ -410,8 +446,8 @@ export class PakStreamer {
   >();
   private nextRequestId = 1;
 
-  // Nominal footprint sizes matching the ~800 MB modular architecture
-  public static readonly NOMINAL_VEHICLE_PAK_BYTES = 9_411_776;     // ~9.412 MB × 34 = 320.00 MB (320,000,384 B)
+  // Nominal footprint sizes matching the modular architecture
+  public static readonly NOMINAL_VEHICLE_PAK_BYTES = 9_411_776;     // ~9.412 MB × 30 = 282.35 MB (282,353,280 B)
   public static readonly NOMINAL_SKY_PAK_BYTES = 26_214_400;        // 25.00 MiB × 4 = 100.00 MiB (104,857,600 B)
   public static readonly NOMINAL_TRACK_PAK_BYTES = 83_886_080;      // 80.00 MiB × 4 = 320.00 MiB (335,544,320 B)
   public static readonly NOMINAL_TRACK_SECTOR_BYTES = 838_860;      // 1/100th of 80 MiB per 500m sector
@@ -715,8 +751,8 @@ export class PakStreamer {
   }
 
   /**
-   * Streams a Vehicle .PAK bundle (~4.7 MB nominal VRAM budget) by slug ('scooter'..'jet_thrust'),
-   * folder ('car_01'..'car_34'), or 1-based index (1..34).
+   * Streams a Vehicle .PAK bundle (~4.7 MB nominal VRAM budget) by slug ('mini_jcw'..'rimac_nevera'),
+   * folder ('car_01'..'car_30'), or 1-based index (1..30).
    */
   public async loadVehiclePak(vehicleIdOrDir: string | number, pin = false): Promise<ParsedPakBundle> {
     const resolved = resolveVehiclePakDir(vehicleIdOrDir);

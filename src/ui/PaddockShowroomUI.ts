@@ -1,11 +1,11 @@
 // src/ui/PaddockShowroomUI.ts
 // 4-Tab Ribbon Paddock Showroom UI, Mod Studio & Binary GLB 2.0 Exporter (M5: F36)
 // Navigable via [Q / E] keys or click:
-//   Tab 1: GARAGE (34 Cars by Tier)
+//   Tab 1: GARAGE (30 Cars by Tier)
 //   Tab 2: LIVERY & 12 PBR PAINTS
 //   Tab 3: CIRCUIT, DISTANCE (2–50 KM), FORMAT & AI DIFFICULTY
 //   Tab 4: MOD STUDIO & GLB EXPORT (0x46546C67 binary glTF 2.0)
-// Permanently docked bottom 🏁 LAUNCH RACE bar & top-header [🔓 SANDBOX: UNLOCK ALL 34 CARS] toggle.
+// Permanently docked bottom 🏁 LAUNCH RACE bar & top-header [🔓 SANDBOX: UNLOCK ALL 30 CARS] toggle.
 
 import {
   AIDifficultyTier,
@@ -101,7 +101,7 @@ export class PaddockShowroomUI {
   public progression: ProgressionManager;
   public phase: GameLifecyclePhase = 'PADDOCK';
   public activeTab: 1 | 2 | 3 | 4 = 1;
-  public selectedVehicleId: string = 'scooter';
+  public selectedVehicleId: string = 'mini_jcw';
   public selectedLiveryIndex: number = 0;
   public selectedTrackId: TrackBiomeId = 'track_golden_gp';
   public selectedSkyId: SkyBiomeId = 'sky_golden_hour';
@@ -171,18 +171,6 @@ export class PaddockShowroomUI {
     this.updateDomTabs();
 
     this.container.appendChild(this.rootElement);
-
-    // Bind keyboard navigation
-    if (typeof window !== 'undefined') {
-      this.keydownHandler = (e: KeyboardEvent) => {
-        if (e.code === 'KeyQ') {
-          this.pressTabKey('KeyQ');
-        } else if (e.code === 'KeyE') {
-          this.pressTabKey('KeyE');
-        }
-      };
-      window.addEventListener('keydown', this.keydownHandler);
-    }
   }
 
   /**
@@ -324,6 +312,13 @@ export class PaddockShowroomUI {
     return this.getState();
   }
 
+  public setVisible(visible: boolean): void {
+    if (this.rootElement) {
+      this.rootElement.style.display = visible ? 'flex' : 'none';
+    }
+    this.phase = visible ? 'PADDOCK' : 'RACING';
+  }
+
   /**
    * Transitions phase from PADDOCK to RACING.
    */
@@ -332,6 +327,7 @@ export class PaddockShowroomUI {
     if (this.cameraMode === 'SHOWROOM') {
       this.cameraMode = 'CHASE';
     }
+    this.setVisible(false);
     if (this.onLaunchRaceCallback) {
       this.onLaunchRaceCallback(
         {
@@ -563,7 +559,7 @@ export class PaddockShowroomUI {
     sandboxBtn.id = 'sandbox-toggle-btn';
     sandboxBtn.textContent = prog.sandboxUnlockedAll
       ? '🔒 RESTORE CAREER LOCKS'
-      : '🔓 SANDBOX: UNLOCK ALL 34 CARS';
+      : '🔓 SANDBOX: UNLOCK ALL 30 CARS';
     sandboxBtn.style.cssText = `
       background: ${prog.sandboxUnlockedAll ? '#f59e0b' : '#334155'};
       color: #fff;
@@ -579,7 +575,7 @@ export class PaddockShowroomUI {
       this.toggleSandboxUnlockAll();
       sandboxBtn.textContent = this.progression.sandboxUnlockedAll
         ? '🔒 RESTORE CAREER LOCKS'
-        : '🔓 SANDBOX: UNLOCK ALL 34 CARS';
+        : '🔓 SANDBOX: UNLOCK ALL 30 CARS';
       sandboxBtn.style.background = this.progression.sandboxUnlockedAll ? '#f59e0b' : '#334155';
     });
     badgeGroup.appendChild(sandboxBtn);
@@ -614,7 +610,7 @@ export class PaddockShowroomUI {
     `;
 
     const tabs = [
-      { id: 1, label: '1. GARAGE (34 Cars by Tier)' },
+      { id: 1, label: '1. GARAGE (30 Cars by Tier)' },
       { id: 2, label: '2. LIVERY & 12 PBR PAINTS' },
       { id: 3, label: '3. CIRCUIT, DISTANCE, FORMAT & AI' },
       { id: 4, label: '4. MOD STUDIO & GLB EXPORT' },
@@ -736,7 +732,7 @@ export class PaddockShowroomUI {
     this.tabContentElement.innerHTML = '';
 
     if (this.activeTab === 1) {
-      // TAB 1: GARAGE - Roster of 34 cars by Tier
+      // TAB 1: GARAGE - Roster of 30 cars by Tier & Category
       const unlockedIds = this.progression.getUnlockedVehicleIds();
       const wrap = document.createElement('div');
       wrap.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(195px, 1fr)); gap: 8px;';
@@ -744,6 +740,7 @@ export class PaddockShowroomUI {
       for (const car of VEHICLE_ROSTER) {
         const isUnlocked = unlockedIds.includes(car.id);
         const isSelected = this.selectedVehicleId === car.id;
+        const categoryLabel = (car as any).category || 'Car';
         const card = document.createElement('div');
         card.style.cssText = `
           padding: 7px 11px;
@@ -761,7 +758,10 @@ export class PaddockShowroomUI {
             <span style="font-weight: 800; font-size: 12px; color: ${isSelected ? '#00f0ff' : '#f8fafc'};">${car.name}</span>
             <span style="font-size: 10px; color: ${isUnlocked ? '#38bdf8' : '#ef4444'}; font-weight: 700;">${isUnlocked ? 'TIER ' + car.tier : '🔒 WINS: ' + car.winsRequired}</span>
           </div>
-          <div style="font-size: 10px; color: #94a3b8;">Top Speed: <strong style="color: #f1f5f9;">${car.topSpeedKph} KPH</strong> | 0-100: <strong style="color: #f1f5f9;">${car.zeroToHundredSec}s</strong></div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #94a3b8;">
+            <span>Top Speed: <strong style="color: #f1f5f9;">${car.topSpeedKph} KPH</strong></span>
+            <span style="background: rgba(0,240,255,0.12); color: #00f0ff; padding: 1px 4px; border-radius: 3px; font-weight: 700; font-size: 9px;">${categoryLabel}</span>
+          </div>
         `;
         if (isUnlocked) {
           card.addEventListener('click', () => {

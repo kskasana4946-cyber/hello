@@ -47,7 +47,10 @@ export class RaceHUD {
     }
   }
 
+  public isVisible = false;
+
   public setVisible(visible: boolean): void {
+    this.isVisible = visible;
     if (this.rootElement) {
       this.rootElement.style.display = visible ? 'flex' : 'none';
     }
@@ -81,7 +84,7 @@ export class RaceHUD {
       inset: 0;
       pointer-events: none;
       z-index: 500;
-      display: flex;
+      display: ${this.isVisible ? 'flex' : 'none'};
       flex-direction: column;
       justify-content: space-between;
       padding: 20px 28px;

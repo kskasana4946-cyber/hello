@@ -342,24 +342,25 @@ describe('Milestone M6: AI Director, 7 Race Formats, Granular Synth & Global Run
     });
 
     it('synthesizes distinct acoustic profiles across vehicle powertrain archetypes', () => {
-      const rot = synthEngine.updateEngineAudio('jdm_rotary', 6000);
-      const v12 = synthEngine.updateEngineAudio('pagani_v12', 6000);
+      const v8 = synthEngine.updateEngineAudio('classic_muscle', 6000);
+      const v12 = synthEngine.updateEngineAudio({ ...getVehicleById('lambo_v12')!, id: 'pagani_v12' }, 6000);
 
-      expect(rot.archetype).toContain('twin_rotor');
+      expect(v8.archetype).toContain('crossplane_v8');
       expect(v12.archetype).toContain('v12');
-      expect(v12.fundamentalFreqHz).toBeGreaterThan(rot.fundamentalFreqHz);
+      expect(v12.fundamentalFreqHz).toBeGreaterThan(v8.fundamentalFreqHz);
     });
 
-    it('enforces strict Nyquist boundary (<= 24,000 Hz) even at extreme 15,000 RPM', () => {
-      const redline = synthEngine.updateEngineAudio('f1', 15000);
+    it('enforces strict Nyquist boundary (<= 24,000 Hz) even at extreme 14,000 RPM', () => {
+      const redline = synthEngine.updateEngineAudio('terzo_ev', 14000);
       expect(redline.fundamentalFreqHz).toBeLessThanOrEqual(synthEngine.sampleRate / 2);
     });
 
     it('clamps invalid/extreme RPM inputs (0, -500, 999999, NaN) gracefully', () => {
-      expect(synthEngine.updateEngineAudio('f1', 0).clampedRpm).toBe(800);
-      expect(synthEngine.updateEngineAudio('f1', -500).clampedRpm).toBe(800);
-      expect(synthEngine.updateEngineAudio('f1', 999999).clampedRpm).toBe(15000);
-      expect(Number.isFinite(synthEngine.updateEngineAudio('f1', NaN).clampedRpm)).toBe(true);
+      const spec = getVehicleById('terzo_ev')!;
+      expect(synthEngine.updateEngineAudio('terzo_ev', 0).clampedRpm).toBe(800);
+      expect(synthEngine.updateEngineAudio('terzo_ev', -500).clampedRpm).toBe(800);
+      expect(synthEngine.updateEngineAudio('terzo_ev', 999999).clampedRpm).toBe(spec.redlineRpm);
+      expect(Number.isFinite(synthEngine.updateEngineAudio('terzo_ev', NaN).clampedRpm)).toBe(true);
     });
 
     it('executes all 7 procedural SFX triggers and logs counters', () => {
@@ -473,16 +474,16 @@ describe('Milestone M6: AI Director, 7 Race Formats, Granular Synth & Global Run
       game.selectVehicle('hot_hatch');
       expect(game.getState().selectedVehicleId).toBe('hot_hatch');
 
-      // Locked car #34 (jet_thrust) is rejected when sandbox is off
-      game.selectVehicle('jet_thrust');
+      // Locked car #30 (rimac_nevera) is rejected when sandbox is off
+      game.selectVehicle('rimac_nevera');
       expect(game.getState().selectedVehicleId).toBe('hot_hatch'); // unchanged
 
-      // Enable Sandbox Mode -> jet_thrust can be selected
+      // Enable Sandbox Mode -> rimac_nevera can be selected
       game.toggleSandboxUnlockAll(true);
       expect(game.getState().sandboxUnlockedAll).toBe(true);
 
-      game.selectVehicle('jet_thrust');
-      expect(game.getState().selectedVehicleId).toBe('jet_thrust');
+      game.selectVehicle('rimac_nevera');
+      expect(game.getState().selectedVehicleId).toBe('rimac_nevera');
     });
 
     it('exports binary GLB 2.0 with glTF magic header (0x46546C67)', () => {

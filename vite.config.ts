@@ -81,6 +81,7 @@ const indexHtmlPath = path.resolve(__dirname, 'index.html');
 const hasIndexHtml = fs.existsSync(indexHtmlPath);
 
 export default defineConfig({
+  base: './',
   plugins: [glslShaderPlugin(), pakStaticServerPlugin()],
   assetsInclude: ['**/*.pak', '**/*.hdr', '**/*.glb', '**/*.wasm'],
   build: {

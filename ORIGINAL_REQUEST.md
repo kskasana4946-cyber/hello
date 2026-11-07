@@ -188,3 +188,52 @@ Current codebase context:
 - Uncommitted work in progress includes M8_R2_800MB_Audio_Biome_Physics_Overhaul (see PROJECT.md, ORIGINAL_REQUEST.md, src/core/types.ts, src/streaming/PakStreamer.ts, tools/build_*_paks.py).
 - New requirement: Each of the 34 roster vehicles must visually resemble its real-world counterpart / archetype (e.g., scooter must look like a 2-wheel scooter with handlebars and rider, Bugatti must have horseshoe grille and side C-line contour, F1/Indy must be open-wheel single seaters, trucks/buses/rigs must have distinct commercial bodies, etc.).
 - Audio overhaul for 48kHz engine audio banks, physics multi-surface grip and tire thermals, 800 MB footprint across track/vehicle/sky paks. All unit tests (tests/*.spec.ts) and E2E tests (tests/e2e/run_e2e_suite.mjs) must pass, and the project must build cleanly and be pushed to origin main.
+
+
+## Follow-up — 2026-11-07T11:28:47Z
+
+the race is still not starting and add a way on the github repo to make it downloadable on phones and pc . the graphics is the trashiest i have evr seeing i am giveing u some vehicle modles the more the cars in the game resemble the vehicle model the better ur work would be checked if it will be bad it would be rejected no scooter bike etc car types will be hatch back convertible mpv truck sedan and suv and supercar but still total cars would be 30 exactly 3-4 hatchback at start 2 would be free
+
+Enough waiting. The race still doesn't start. Add a direct download option for both phones and PC on the GitHub repo without delay. The current graphics are unacceptable—fix them now. I am providing vehicle models. Your job is to make every car in the game match these models as closely as possible. If your work does not meet this standard, it will be rejected on the spot. No scooters, no bikes. Only hatchbacks, convertibles, MPVs, trucks, sedans, SUVs, and supercars are allowed. The total number of cars must be exactly 30. At launch, there will be 3 to 4 hatchbacks, with 2 available for free. Get this done. No excuses.
+
+The task for Argon was cut off because of the daily usage limit, but that is irrelevant now. Go back, read every previous prompt, review the entire game, and examine the screenshot sent to Argon. I want every detail accounted for. Do not skip a single step. Handle it now.
+
+Context and User Screenshots:
+1. User Screenshots provided for vehicle visual models:
+   - file:///home/antigravity/Screenshot_2026-11-07_132731.png: Mini Cooper JCW Hot Hatchback (rounded headlights, hexagonal grille with red accent bar, roof spoiler, sporty compact body).
+   - file:///home/antigravity/Screenshot_2026-11-07_132835.png: Bentley Flying Spur Luxury Sedan (large chrome matrix grille, quad round crystal headlights, long elegant luxury sedan silhouette).
+   - file:///home/antigravity/Screenshot_2026-11-07_132954.png: Futuristic EV Supercar / Lamborghini Concept (wedge shape, aero disc wheels, glowing LED streaks, low nose, aggressive side intakes).
+   - file:///home/antigravity/Screenshot_2026-11-07_133018.png: Rugged 4x4 Off-Road Crew-Cab Pickup (lifted suspension, black fender flares, roof cargo rack, snorkel, rear roll bar, chunky off-road tires).
+   - file:///home/antigravity/Screenshot_2026-11-07_133026.png: Modern Double-Cab Pickup / Ford Ranger (C-clamp LED headlights, bold front grille, sculpted truck bed).
+   - file:///home/antigravity/Screenshot_2026-11-07_133040.png: Bugatti Bolide / Hypercar Rear (red & black two-tone, dual horizontal LED lightbars, extreme rear diffuser, roof scoop, mid-engine).
+   - file:///home/antigravity/Screenshot_2026-11-07_133110.png: Porsche 911 Cabriolet / Convertible (deep blue convertible, open top, teardrop headlights, wide haunches).
+   - file:///home/antigravity/Screenshot_2026-11-07_133126.png: Porsche 911 Targa / Convertible (white open-top convertible, roll hoop, rear deck).
+   - file:///home/antigravity/Screenshot_2026-11-07_133143.png: Pagani Utopia / Prototype Hypercar (silver sculpted hypercar, cockpit canopy, sculpted fender pontoon headlights, wide front splitter).
+   - file:///home/antigravity/Screenshot_2026-11-07_133156.png: Ferrari LaFerrari / F8 (red hypercar, pointed F1 nosecone with front nostrils, gold wheels, black roof canopy, side intake scallops).
+
+2. Previous User Screenshot from gameplay (file:///home/antigravity/Screenshot_2026-11-06_235633.png):
+   - Shows the race did not start when clicking LAUNCH RACE. In the showroom, the car looked like a dark unlit frame with stick figures and overlapping HUD elements.
+
+3. Detailed Technical Deliverables:
+   A. RACE START FIX:
+      - Diagnose and fix why clicking 'LAUNCH RACE' or pressing Space doesn't start the race. Ensure clicking LAUNCH RACE hides showroom UI, removes any blocking overlays, puts camera into driving mode, and immediately enables vehicle throttle/steering on the track.
+   B. DIRECT DOWNLOAD FOR PHONES & PC ON GITHUB:
+      - Add Progressive Web App (PWA) manifest (manifest.webmanifest), service worker, and mobile touch controls (on-screen steering, gas, brake buttons) so users on mobile phones (Android/iOS) can play directly in browser or install with 1 tap.
+      - Add a standalone single-file / offline downloadable build and GitHub Pages / Release packaging script so users on PC and phones can play or download directly from GitHub without needing npm or terminal.
+   C. EXACTLY 30 VEHICLES (NO SCOOTERS, NO BIKES):
+      - Update VehicleRoster.ts to contain EXACTLY 30 vehicles.
+      - Allowed categories ONLY:
+        * Hatchback (3-4 hatchbacks at start, exactly 2 FREE at Tier 0)
+        * Convertible
+        * MPV
+        * Truck
+        * Sedan
+        * SUV
+        * Supercar
+      - No scooters, no motorbikes.
+   D. GRAPHICS OVERHAUL & VISUAL FIDELITY:
+      - Overhaul HighPolyVehicleBuilder.ts so all 30 vehicles match the user's reference images (Mini Cooper JCW, Bentley sedan, Ferrari LaFerrari, Porsche convertible, lifted 4x4 pickup, modern truck, Bugatti Bolide, EV hypercar, etc.).
+      - Fix Showroom lighting: bright key light, fill light, rim light, reflective floor, soft shadows so cars look gorgeous, metallic, and reflective—never dark silhouettes.
+   E. KEEP ALL TESTS PASSING & PUSH TO GITHUB:
+      - Update test suites (vitest, E2E) to pass 100% with the 30-vehicle roster.
+      - Commit and push to origin/main.

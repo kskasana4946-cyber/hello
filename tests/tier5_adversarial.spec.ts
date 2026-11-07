@@ -139,28 +139,28 @@ describe('Milestone M7: Tier 5 Adversarial & Chaos Hardening Suite', () => {
       synth = new GranularSynthEngine();
     });
 
-    it('clamps 15,000 RPM (Formula 1 / Jet Thrust) below the Nyquist threshold', () => {
-      const f1Spec = getVehicleById('f1')!;
-      expect(f1Spec.redlineRpm).toBe(15000);
+    it('clamps 14,000 RPM (EV / Supercar) below the Nyquist threshold', () => {
+      const f1Spec = getVehicleById('terzo_ev')!;
+      expect(f1Spec.redlineRpm).toBe(14000);
 
       const nyquist = synth.sampleRate / 2; // 24,000 Hz at 48kHz
-      const telemetry = synth.updateEngineAudio(f1Spec, 15000, 1.0);
+      const telemetry = synth.updateEngineAudio(f1Spec, 14000, 1.0);
 
-      expect(telemetry.clampedRpm).toBe(15000);
+      expect(telemetry.clampedRpm).toBe(14000);
       expect(telemetry.fundamentalFreqHz).toBeLessThan(nyquist);
       expect(telemetry.fundamentalFreqHz).toBeLessThanOrEqual(nyquist - 100);
       expect(telemetry.fundamentalFreqHz).toBeGreaterThan(20);
       expect(telemetry.harmonicFormantCutoffHz).toBeLessThan(nyquist);
-      expect(telemetry.grainPlaybackRate).toBeCloseTo(15.0, 2);
+      expect(telemetry.grainPlaybackRate).toBeCloseTo(14.0, 2);
     });
 
     it('resiliently handles extreme overrevving (50,000 RPM) without aliasing or exceeding Nyquist', () => {
-      const jetSpec = getVehicleById('jet_thrust')!;
+      const jetSpec = getVehicleById('terzo_ev')!;
       const nyquist = synth.sampleRate / 2;
       const telemetry = synth.updateEngineAudio(jetSpec, 50000, 1.0);
 
-      // Clamped to vehicle's maximum redline (15,000 RPM)
-      expect(telemetry.clampedRpm).toBeLessThanOrEqual(15000);
+      // Clamped to vehicle's maximum redline (14,000 RPM)
+      expect(telemetry.clampedRpm).toBeLessThanOrEqual(14000);
       expect(telemetry.fundamentalFreqHz).toBeLessThanOrEqual(nyquist - 100);
       expect(Number.isFinite(telemetry.fundamentalFreqHz)).toBe(true);
       expect(Number.isFinite(telemetry.harmonicFormantCutoffHz)).toBe(true);
@@ -168,17 +168,17 @@ describe('Milestone M7: Tier 5 Adversarial & Chaos Hardening Suite', () => {
 
     it('safely handles engine audio updates across diverse powertrain archetypes', () => {
       const testCases = [
-        { id: 'lambo', expectedArch: 'italian_na_v12' },
-        { id: 'jdm_rotary', expectedArch: 'twin_rotor' },
-        { id: 'muscle', expectedArch: 'supercharged_v8' },
-        { id: 'ev_proto', expectedArch: 'quad_motor_ev' },
-        { id: 'fan_car', expectedArch: 'cosworth_v12_fan' },
+        { id: 'lambo_v12' },
+        { id: 'classic_muscle' },
+        { id: 'terzo_ev' },
+        { id: 'pagani_utopia' },
+        { id: 'rimac_nevera' },
       ];
 
       for (const tc of testCases) {
         const spec = getVehicleById(tc.id)!;
         const res = synth.updateEngineAudio(spec, spec.redlineRpm * 0.9, 0.8);
-        expect(res.vehicleId).toBe(tc.id);
+        expect(res.vehicleId).toBe(spec.id);
         expect(res.fundamentalFreqHz).toBeGreaterThan(20);
         expect(res.fundamentalFreqHz).toBeLessThan(synth.sampleRate / 2);
       }
@@ -443,31 +443,31 @@ describe('Milestone M7: Tier 5 Adversarial & Chaos Hardening Suite', () => {
     });
 
     it('rejects vehicle purchase at cost - 1 and accepts at exact cost with exact balance zeroing', () => {
-      const rx7 = getVehicleById('jdm_rotary')!;
+      const rx7 = getVehicleById('gr_yaris')!;
       expect(rx7.creditCost).toBe(25000);
-      expect(progression.isVehicleUnlocked('jdm_rotary')).toBe(false);
+      expect(progression.isVehicleUnlocked('gr_yaris')).toBe(false);
 
       // Boundary 1: Exactly 1 credit below cost
       progression.credits = rx7.creditCost - 1; // 24,999 CR
-      const failResult = progression.purchaseVehicleWithCR('jdm_rotary');
+      const failResult = progression.purchaseVehicleWithCR('gr_yaris');
       expect(failResult.purchased).toBe(false);
       expect(failResult.reason).toBe('INSUFFICIENT_CREDITS');
       expect(failResult.credits).toBe(24999);
-      expect(progression.isVehicleUnlocked('jdm_rotary')).toBe(false);
+      expect(progression.isVehicleUnlocked('gr_yaris')).toBe(false);
 
       // Boundary 2: Exactly at cost
       progression.credits = rx7.creditCost; // 25,000 CR
-      const okResult = progression.purchaseVehicleWithCR('jdm_rotary');
+      const okResult = progression.purchaseVehicleWithCR('gr_yaris');
       expect(okResult.purchased).toBe(true);
       expect(okResult.alreadyUnlocked).toBe(false);
       expect(okResult.deductedCredits).toBe(25000);
       expect(okResult.credits).toBe(0);
       expect(progression.credits).toBe(0);
-      expect(progression.isVehicleUnlocked('jdm_rotary')).toBe(true);
+      expect(progression.isVehicleUnlocked('gr_yaris')).toBe(true);
 
       // Boundary 3: Re-purchasing an already unlocked vehicle deducts 0 CR
       progression.credits = 50000;
-      const reResult = progression.purchaseVehicleWithCR('jdm_rotary');
+      const reResult = progression.purchaseVehicleWithCR('gr_yaris');
       expect(reResult.purchased).toBe(true);
       expect(reResult.alreadyUnlocked).toBe(true);
       expect(reResult.deductedCredits).toBe(0);
@@ -475,26 +475,26 @@ describe('Milestone M7: Tier 5 Adversarial & Chaos Hardening Suite', () => {
     });
 
     it('toggles Sandbox Unlock-All non-destructively and cleanly restores authentic career progression', () => {
-      // Initially: 0 wins, 3 starter vehicles
+      // Initially: 0 wins, 2 starter vehicles
       expect(progression.totalWins).toBe(0);
-      expect(progression.getUnlockedVehicleIds()).toEqual(['scooter', 'hot_hatch', 'roadster']);
-      expect(progression.isVehicleUnlocked('jet_thrust')).toBe(false);
+      expect(progression.getUnlockedVehicleIds()).toEqual(['mini_jcw', 'hot_hatch']);
+      expect(progression.isVehicleUnlocked('rimac_nevera')).toBe(false);
 
-      // Legitimate unlock: earn 2 wins -> unlocks #4 jdm_rotary and #5 car
+      // Legitimate unlock: earn 2 wins -> unlocks #3 golf_r and #4 gr_yaris
       progression.recordRaceCompletion({ position: 1 }); // Win 1
       progression.recordRaceCompletion({ position: 1 }); // Win 2
       expect(progression.totalWins).toBe(2);
       const authenticUnlocked = progression.getUnlockedVehicleIds();
-      expect(authenticUnlocked).toContain('jdm_rotary');
-      expect(authenticUnlocked).toContain('car');
-      expect(progression.isVehicleUnlocked('jet_thrust')).toBe(false);
+      expect(authenticUnlocked).toContain('golf_r');
+      expect(authenticUnlocked).toContain('gr_yaris');
+      expect(progression.isVehicleUnlocked('rimac_nevera')).toBe(false);
 
-      // Toggle Sandbox ON: unlocks all 34 vehicles
+      // Toggle Sandbox ON: unlocks all 30 vehicles
       const sbOn = progression.toggleSandboxUnlockAll(true);
       expect(sbOn.sandboxUnlockedAll).toBe(true);
-      expect(progression.getUnlockedVehicleIds().length).toBe(34);
-      expect(progression.isVehicleUnlocked('jet_thrust')).toBe(true);
-      expect(progression.isVehicleUnlocked('f1')).toBe(true);
+      expect(progression.getUnlockedVehicleIds().length).toBe(30);
+      expect(progression.isVehicleUnlocked('rimac_nevera')).toBe(true);
+      expect(progression.isVehicleUnlocked('terzo_ev')).toBe(true);
       // Total wins and credits must remain authentic
       expect(progression.totalWins).toBe(2);
 
@@ -502,15 +502,15 @@ describe('Milestone M7: Tier 5 Adversarial & Chaos Hardening Suite', () => {
       const sbOff = progression.toggleSandboxUnlockAll(false);
       expect(sbOff.sandboxUnlockedAll).toBe(false);
       expect(progression.getUnlockedVehicleIds()).toEqual(authenticUnlocked);
-      expect(progression.isVehicleUnlocked('jet_thrust')).toBe(false);
-      expect(progression.isVehicleUnlocked('jdm_rotary')).toBe(true);
+      expect(progression.isVehicleUnlocked('rimac_nevera')).toBe(false);
+      expect(progression.isVehicleUnlocked('golf_r')).toBe(true);
       expect(progression.totalWins).toBe(2);
     });
 
     it('persists and recovers career progression across memory storage instances without sandbox leakage', () => {
       progression.recordRaceCompletion({ position: 1 }); // Win 1
       progression.credits += 25000;
-      progression.purchaseVehicleWithCR('jdm_rotary');
+      progression.purchaseVehicleWithCR('gr_yaris');
       progression.toggleSandboxUnlockAll(true); // Turn on sandbox
 
       // Create a fresh ProgressionManager instance loading the same storage
@@ -518,8 +518,8 @@ describe('Milestone M7: Tier 5 Adversarial & Chaos Hardening Suite', () => {
       // Sandbox should default to false on reloaded session, preserving authentic career state
       expect(reloaded.sandboxUnlockedAll).toBe(false);
       expect(reloaded.totalWins).toBe(1);
-      expect(reloaded.isVehicleUnlocked('jdm_rotary')).toBe(true);
-      expect(reloaded.isVehicleUnlocked('jet_thrust')).toBe(false);
+      expect(reloaded.isVehicleUnlocked('gr_yaris')).toBe(true);
+      expect(reloaded.isVehicleUnlocked('rimac_nevera')).toBe(false);
     });
   });
 });

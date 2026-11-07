@@ -52,6 +52,7 @@ import {
   RACE_FORMAT_SPECS,
 } from './ai/RacingAIDirector';
 import { GranularSynthEngine } from './audio/GranularSynthEngine';
+import { touchControls } from './ui/TouchControls';
 
 // ============================================================================
 // 1. Vehicle Builder Facade for Global Subsystems Inspection
@@ -321,7 +322,7 @@ export function initApexGame(): any {
   const aiDirector = new RacingAIDirector(splineStreamer, synthEngine);
 
   // Initialize player physics vehicle
-  const initialSpec = VEHICLE_ROSTER[2]; // 'roadster' (Tier 0)
+  const initialSpec = VEHICLE_ROSTER[0]; // 'mini_jcw' (Tier 0 free car)
   (physicsWorld as any).vehicleSpec = initialSpec;
   const initialPhysState = physicsWorld.addVehicle('player', initialSpec, 0, 0);
   (physicsWorld as any).state = initialPhysState;
@@ -334,17 +335,94 @@ export function initApexGame(): any {
     (this as any).state.spec = s;
     return s;
   };
-  (physicsWorld as any).resetVehicleState = function () {
+  (physicsWorld as any).resetVehicleState = function (
+    vehicleIdOrPos?: any,
+    posOrForward?: any,
+    maybeForward?: any
+  ) {
+    let customPos: [number, number, number] | undefined;
+    let customForward: [number, number, number] | undefined;
+
+    if (Array.isArray(vehicleIdOrPos)) {
+      customPos = vehicleIdOrPos as [number, number, number];
+      if (Array.isArray(posOrForward)) {
+        customForward = posOrForward as [number, number, number];
+      }
+    } else if (typeof vehicleIdOrPos === 'string') {
+      if (Array.isArray(posOrForward)) {
+        customPos = posOrForward as [number, number, number];
+      }
+      if (Array.isArray(maybeForward)) {
+        customForward = maybeForward as [number, number, number];
+      }
+    }
+
     const s = (this as any).state;
     if (s) {
       s.speedMs = 0;
       s.speedKph = 0;
+      s.velocity = [0, 0, 0];
       s.alongOffset = 0;
       s.lateralOffset = 0;
-      s.rpm = 1000;
+      s.verticalOffset = 0.35;
+      s.pitchRad = 0;
+      s.rollRad = 0;
       s.gear = 1;
+      s.rpm = 1000;
       s.nitroPercent = 100;
       s.brakeTempCelsius = 20;
+      s.airborne = false;
+      s.airborneTimeSec = 0;
+      s.onSkybridgeDeck = false;
+      s.barrierContact = false;
+      s.plasmaSurgeRemainingSec = 0;
+      s.activeSpeedMultiplier = 1.0;
+      s.shiftShockRemainingSec = 0;
+
+      const frame = splineStreamer.getFrameAtArcLength(0);
+      const rideHeight = 0.35;
+      const isNormalUp = Math.abs(frame.normal[1]) >= Math.abs(frame.binormal[1]);
+      const U = isNormalUp ? frame.normal : frame.binormal;
+      const N = isNormalUp ? frame.binormal : frame.normal;
+
+      if (customPos) {
+        s.position = [customPos[0], customPos[1], customPos[2]];
+      } else {
+        s.position = [
+          frame.position[0] + U[0] * rideHeight,
+          frame.position[1] + U[1] * rideHeight,
+          frame.position[2] + U[2] * rideHeight,
+        ];
+      }
+
+      if (customForward) {
+        const len = Math.hypot(customForward[0], customForward[1], customForward[2]) || 1;
+        s.forward = [customForward[0] / len, customForward[1] / len, customForward[2] / len];
+      } else {
+        s.forward = [...frame.tangent];
+      }
+
+      s.up = [...U];
+      s.right = [...N];
+      s.yawRad = Math.atan2(s.forward[0], s.forward[2]);
+
+      if (Array.isArray(s.wheels)) {
+        for (const w of s.wheels) {
+          w.worldMountPos = [...s.position];
+          w.worldContactPos = [s.position[0], s.position[1] - rideHeight, s.position[2]];
+          w.suspensionLength = 0.35;
+          w.compression = 0.05;
+          w.compressionVelocity = 0;
+          w.inContact = true;
+          w.damperForceN = 0;
+          w.antiRollForceN = 0;
+          w.slipAngleRad = 0;
+          w.lateralForceN = 0;
+          w.longitudinalForceN = 0;
+          w.rotationAngleRad = 0;
+          w.tireTempCelsius = 85.0;
+        }
+      }
     }
   };
 
@@ -390,7 +468,7 @@ export function initApexGame(): any {
     controller.toggleAudioMute();
   };
 
-  // 4. Three.js Scene Setup, 3-Point Studio Lighting & Showroom Stage
+  // 4. Three.js Scene Setup, 5-Point Studio Lighting Rig & Showroom Studio Environment
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x060a14);
   const camera = new THREE.PerspectiveCamera(
@@ -401,54 +479,146 @@ export function initApexGame(): any {
     3000
   );
 
-  // High-Dynamic-Range 3-Point Lighting Rig + Ambient Hemisphere Fill
-  const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 1.45);
+  // Create and assign analytical studio PMREM environment cubemap for realistic reflections
+  function createStudioEnvironmentMap(uncappedRenderer: UncappedRenderer): THREE.Texture {
+    const gl = (uncappedRenderer as any).webglRenderer as THREE.WebGLRenderer | null;
+    if (!gl) {
+      const data = new Uint8Array([
+        210, 225, 255, 255,
+        130, 150, 185, 255,
+        70, 85, 110, 255,
+        30, 38, 55, 255,
+      ]);
+      const tex = new THREE.DataTexture(data, 2, 2, THREE.RGBAFormat);
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    try {
+      const pmremGenerator = new THREE.PMREMGenerator(gl);
+      pmremGenerator.compileEquirectangularShader();
+
+      const envScene = new THREE.Scene();
+      envScene.background = new THREE.Color(0x060c18);
+
+      const softboxMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const ceiling1 = new THREE.Mesh(new THREE.PlaneGeometry(16, 6), softboxMat);
+      ceiling1.position.set(0, 7, 0);
+      ceiling1.rotation.x = Math.PI / 2;
+      envScene.add(ceiling1);
+
+      const ceiling2 = new THREE.Mesh(new THREE.PlaneGeometry(12, 3), softboxMat);
+      ceiling2.position.set(4, 6, -3);
+      ceiling2.rotation.x = Math.PI / 2;
+      envScene.add(ceiling2);
+
+      const rimBoxMat = new THREE.MeshBasicMaterial({ color: 0x93c5fd });
+      const rim1 = new THREE.Mesh(new THREE.PlaneGeometry(8, 4), rimBoxMat);
+      rim1.position.set(-6, 4, -8);
+      rim1.lookAt(0, 0, 0);
+      envScene.add(rim1);
+
+      const renderTarget = pmremGenerator.fromScene(envScene, 0.04);
+      pmremGenerator.dispose();
+      return renderTarget.texture;
+    } catch {
+      const data = new Uint8Array([
+        210, 225, 255, 255,
+        130, 150, 185, 255,
+        70, 85, 110, 255,
+        30, 38, 55, 255,
+      ]);
+      const tex = new THREE.DataTexture(data, 2, 2, THREE.RGBAFormat);
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      tex.needsUpdate = true;
+      return tex;
+    }
+  }
+
+  const studioEnvMap = createStudioEnvironmentMap(renderer);
+  scene.environment = studioEnvMap;
+
+  // 5-Point Studio Lighting Rig (Overhead Softbox, Warm Key, Cool Rim, Side Fill, Ground Bounce)
+  const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x334155, 1.6);
   scene.add(hemiLight);
 
-  const keyLight = new THREE.DirectionalLight(0xfff7ed, 2.9);
-  keyLight.position.set(16, 26, 20);
+  // 1. Overhead Downward Softbox (Illuminates hood, roof, deck)
+  const overheadSoftbox = new THREE.DirectionalLight(0xffffff, 4.0);
+  overheadSoftbox.position.set(0, 6, 0);
+  overheadSoftbox.target.position.set(0, 0, 0);
+  scene.add(overheadSoftbox);
+  scene.add(overheadSoftbox.target);
+
+  // 2. Front 3/4 Key Light (Warm white, primary shape definition)
+  const keyLight = new THREE.DirectionalLight(0xfffaf0, 3.5);
+  keyLight.position.set(5, 4, 6);
+  keyLight.castShadow = true;
   scene.add(keyLight);
 
-  const fillLight = new THREE.DirectionalLight(0x38bdf8, 1.35);
-  fillLight.position.set(-20, 14, -16);
-  scene.add(fillLight);
-
-  const rimLight = new THREE.DirectionalLight(0xf8fafc, 1.65);
-  rimLight.position.set(0, 14, -24);
+  // 3. Rear 3/4 Rim / Kicker Light (Cool white, prevents dark rear silhouettes)
+  const rimLight = new THREE.DirectionalLight(0xecfeff, 3.0);
+  rimLight.position.set(-5, 3.5, -6);
   scene.add(rimLight);
 
-  // 3D Luxury Showroom Studio Environment (Turntable, Reflective Floor, Overhead Softboxes)
+  // 4. Side Soft Fill Light (Illuminates doors, wheels, rockers)
+  const sideFill = new THREE.DirectionalLight(0xdbeafe, 2.0);
+  sideFill.position.set(7, 2, -2);
+  scene.add(sideFill);
+
+  // 5. Upward Ground Bounce Light (Eliminates pitch-black undersides)
+  const groundBounce = new THREE.DirectionalLight(0x334155, 1.5);
+  groundBounce.position.set(0, -1, 0);
+  scene.add(groundBounce);
+
+  // 3D Luxury Showroom Studio Environment
   const showroomGroup = new THREE.Group();
   showroomGroup.name = 'ShowroomStudioEnvironment';
 
+  // Infinity Cyclorama Dark Backdrop (#0b1120 to #020617)
+  const cyclorama = new THREE.Mesh(
+    new THREE.CylinderGeometry(28, 28, 14, 64, 1, true, -Math.PI * 0.75, Math.PI * 1.5),
+    new THREE.MeshStandardMaterial({
+      color: 0x060c18,
+      roughness: 0.85,
+      metalness: 0.1,
+      side: THREE.BackSide,
+    })
+  );
+  cyclorama.position.y = 5.0;
+  showroomGroup.add(cyclorama);
+
+  // Polished Dark Reflective Floor
   const studioFloor = new THREE.Mesh(
     new THREE.CylinderGeometry(32, 32, 0.2, 64),
     new THREE.MeshStandardMaterial({
-      color: 0x0b111e,
-      metalness: 0.72,
-      roughness: 0.2,
+      color: 0x040812,
+      metalness: 0.90,
+      roughness: 0.12,
     })
   );
   studioFloor.position.y = -0.12;
   showroomGroup.add(studioFloor);
 
+  // Turntable Plinth
   const turntablePlinth = new THREE.Mesh(
-    new THREE.CylinderGeometry(3.35, 3.55, 0.08, 64),
+    new THREE.CylinderGeometry(3.55, 3.75, 0.08, 64),
     new THREE.MeshStandardMaterial({
-      color: 0x161f33,
-      metalness: 0.85,
-      roughness: 0.16,
+      color: 0x0c1322,
+      metalness: 0.92,
+      roughness: 0.14,
     })
   );
   turntablePlinth.position.y = -0.03;
   showroomGroup.add(turntablePlinth);
 
+  // Concentric Cyan/White Neon Rings (#00f0ff outer, #ffffff inner)
   const turntableCyanRing = new THREE.Mesh(
-    new THREE.TorusGeometry(3.46, 0.035, 16, 96),
+    new THREE.TorusGeometry(3.60, 0.035, 16, 96),
     new THREE.MeshStandardMaterial({
       color: 0x00f0ff,
       emissive: 0x00f0ff,
-      emissiveIntensity: 2.6,
+      emissiveIntensity: 3.2,
       roughness: 0.1,
     })
   );
@@ -457,39 +627,53 @@ export function initApexGame(): any {
   showroomGroup.add(turntableCyanRing);
 
   const turntableInnerRing = new THREE.Mesh(
-    new THREE.TorusGeometry(2.55, 0.02, 12, 72),
+    new THREE.TorusGeometry(2.45, 0.025, 12, 72),
     new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      emissive: 0x38bdf8,
-      emissiveIntensity: 1.8,
+      emissive: 0xdbeafe,
+      emissiveIntensity: 2.2,
     })
   );
   turntableInnerRing.rotation.x = Math.PI / 2;
   turntableInnerRing.position.y = 0.015;
   showroomGroup.add(turntableInnerRing);
 
+  // Ambient Occlusion Ground Contact Shadow directly under car chassis
+  const contactShadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(4.8, 2.4),
+    new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.65,
+      depthWrite: false,
+    })
+  );
+  contactShadow.rotation.x = -Math.PI / 2;
+  contactShadow.position.y = 0.005;
+  showroomGroup.add(contactShadow);
+
   // Overhead Softbox Light Strips
   const softboxMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0xf8fafc,
-    emissiveIntensity: 3.2,
+    emissiveIntensity: 3.5,
   });
   for (const sbX of [-2.4, 0.0, 2.4]) {
-    const softbox = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.06, 6.2), softboxMat);
-    softbox.position.set(sbX, 4.4, 0);
+    const softbox = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.06, 6.5), softboxMat);
+    softbox.position.set(sbX, 4.8, 0);
     showroomGroup.add(softbox);
   }
 
-  // Architectural Studio Columns with Vertical Accent Light Bars
+  // Architectural Studio Columns with Accent Lights
   const pillarMat = new THREE.MeshStandardMaterial({
-    color: 0x111827,
-    metalness: 0.65,
-    roughness: 0.3,
+    color: 0x0b1120,
+    metalness: 0.75,
+    roughness: 0.25,
   });
   const accentStripMat = new THREE.MeshStandardMaterial({
     color: 0x00f0ff,
     emissive: 0x0284c7,
-    emissiveIntensity: 1.8,
+    emissiveIntensity: 2.2,
   });
   for (let pIdx = 0; pIdx < 8; pIdx++) {
     const pAngle = (pIdx / 8) * Math.PI * 2;
@@ -507,6 +691,7 @@ export function initApexGame(): any {
 
   const skyAtmosphere = new SkyAtmosphereSystem({ pakStreamer });
   skyAtmosphere.initialize(scene, renderer);
+  (skyAtmosphere as any).rootGroup.visible = false; // Hide outdoor SkyDome in showroom
 
   // Attach Track Streamer & Tactical Ramps to Scene (hidden while in Showroom)
   splineStreamer.attachToScene(scene);
@@ -625,7 +810,7 @@ export function initApexGame(): any {
   let bootProgress = 0.0;
   let bootRpm = 0;
   let activeTab: 1 | 2 | 3 | 4 = 1;
-  let selectedVehicleId = 'roadster';
+  let selectedVehicleId = 'mini_jcw';
   let selectedLiveryIndex = 0;
   let selectedTrackId: TrackBiomeId = 'track_golden_gp';
   let selectedSkyId: SkyBiomeId = 'sky_golden_hour';
@@ -665,7 +850,12 @@ export function initApexGame(): any {
       synthEngine.resumeAudio();
 
       // Keyboard navigation
-      if (e.code === 'Escape' && phase === 'RACING') {
+      if ((e.code === 'Space' || e.code === 'Enter') && phase === 'PADDOCK') {
+        e.preventDefault();
+        keysDown.delete('Space');
+        controller.launchRace();
+        return;
+      } else if (e.code === 'Escape' && phase === 'RACING') {
         controller.returnToPaddock();
       } else if (e.code === 'KeyQ' && phase === 'PADDOCK') {
         controller.pressTabKey('KeyQ');
@@ -779,8 +969,10 @@ export function initApexGame(): any {
       activeTab = 1;
       cameraMode = 'SHOWROOM';
       renderer.setCameraMode('SHOWROOM');
+      paddockUI.setVisible(true);
       raceHUD.setVisible(false);
       showroomGroup.visible = true;
+      (skyAtmosphere as any).rootGroup.visible = false;
       (splineStreamer as any).sceneRoot.visible = false;
       (tacticalRamps as any).sceneRoot.visible = false;
       return this.getState();
@@ -927,6 +1119,9 @@ export function initApexGame(): any {
     },
 
     launchRace() {
+      // Clear any pending Space key so handbrake is NOT locked on race entry
+      keysDown.delete('Space');
+
       splineStreamer.configure(selectedDistanceKm, selectedTrackId);
       tacticalRamps.rebuildRamps();
       if (typeof window !== 'undefined') { skyAtmosphere.loadSky(selectedSkyId).catch(() => {}); }
@@ -937,16 +1132,18 @@ export function initApexGame(): any {
       // Stream initial lookahead window of 3D track sectors around starting line
       splineStreamer.streamLookaheadWindow(0, splineStreamer.getTotalLength(), 2, 6);
       showroomGroup.visible = false;
+      (skyAtmosphere as any).rootGroup.visible = true;
       (splineStreamer as any).sceneRoot.visible = true;
       (tacticalRamps as any).sceneRoot.visible = true;
 
       // Spawn 3D AI Rival cars on the grid
       rebuildAiRivalModels();
 
-      // Step physics once (dt=0.001) so pState.position / forward / up match s=0 on track
-      physicsWorld.step(0.001);
+      // Step physics once at true 240Hz fixed sub-step (FIXED_DT = 1/240s)
+      physicsWorld.step(RapierVehicleWorld.FIXED_DT);
 
       phase = 'RACING';
+      paddockUI.setVisible(false);
       raceHUD.setVisible(true);
       if (typeof document !== 'undefined') {
         const paddockEl = document.getElementById('apex-paddock-showroom-ui');
@@ -956,6 +1153,25 @@ export function initApexGame(): any {
         cameraMode = 'CHASE';
       }
       renderer.setCameraMode(cameraMode);
+
+      // Snap camera directly behind player vehicle on start grid
+      const pState = (physicsWorld as any).state;
+      if (pState && camera) {
+        const startPos = new THREE.Vector3(...pState.position);
+        const startFwd = new THREE.Vector3(...pState.forward);
+        const startUp = new THREE.Vector3(0, 1, 0);
+        camera.position
+          .copy(startPos)
+          .sub(startFwd.clone().multiplyScalar(6.2))
+          .add(startUp.clone().multiplyScalar(2.15));
+        camera.lookAt(
+          startPos
+            .clone()
+            .add(startFwd.clone().multiplyScalar(4.5))
+            .add(startUp.clone().multiplyScalar(0.45))
+        );
+      }
+
       return this.getState();
     },
 
@@ -1007,6 +1223,7 @@ export function initApexGame(): any {
       });
 
       phase = 'POST_RACE';
+      paddockUI.setVisible(false);
       raceHUD.setVisible(false);
       postRaceCeremony.showCeremony(report);
       return this.getState();
@@ -1017,7 +1234,9 @@ export function initApexGame(): any {
       cameraMode = 'SHOWROOM';
       renderer.setCameraMode('SHOWROOM');
       raceHUD.setVisible(false);
+      paddockUI.setVisible(true);
       showroomGroup.visible = true;
+      (skyAtmosphere as any).rootGroup.visible = false;
       (splineStreamer as any).sceneRoot.visible = false;
       (tacticalRamps as any).sceneRoot.visible = false;
 
@@ -1135,13 +1354,35 @@ export function initApexGame(): any {
     (window as any).__APEX_GAME__ = controller;
   }
 
-  // Helper to update shader camera uniform on vehicle materials
+  // Helper to update shader camera and showroom lighting uniforms on vehicle materials
   function syncVehicleShaderUniforms(model: VehicleModelInstance | null, cam: THREE.Camera) {
     if (!model) return;
     for (const mat of model.bodyMaterials) {
       const sMat = mat as THREE.ShaderMaterial;
-      if (sMat.uniforms && sMat.uniforms.uCameraPosition) {
-        sMat.uniforms.uCameraPosition.value.copy(cam.position);
+      if (sMat.uniforms) {
+        if (sMat.uniforms.uCameraPosition) {
+          sMat.uniforms.uCameraPosition.value.copy(cam.position);
+        }
+        if (phase === 'PADDOCK') {
+          if (sMat.uniforms.uSunDirection) {
+            sMat.uniforms.uSunDirection.value.set(0.35, 0.85, 0.40).normalize();
+          }
+          if (sMat.uniforms.uSunColor) {
+            sMat.uniforms.uSunColor.value.setHex(0xfffaf0);
+          }
+          if (sMat.uniforms.uSunIntensity) {
+            sMat.uniforms.uSunIntensity.value = 3.5;
+          }
+          if (sMat.uniforms.uAmbientSkyColor) {
+            sMat.uniforms.uAmbientSkyColor.value.setRGB(0.75, 0.82, 0.95);
+          }
+          if (sMat.uniforms.uAmbientGroundColor) {
+            sMat.uniforms.uAmbientGroundColor.value.setRGB(0.40, 0.42, 0.48);
+          }
+          if (sMat.uniforms.uEnvMapIntensity) {
+            sMat.uniforms.uEnvMapIntensity.value = 2.8;
+          }
+        }
       }
     }
   }
@@ -1163,14 +1404,25 @@ export function initApexGame(): any {
         bootLoadingScreen.setBootProgress(bootProgress);
       }
     } else if (phase === 'RACING') {
-      // Gather Player Input
-      const throttle = keysDown.has('ArrowUp') || keysDown.has('KeyW') ? 1.0 : 0.0;
-      const brake = keysDown.has('ArrowDown') || keysDown.has('KeyS') ? 1.0 : 0.0;
+      // Gather Player Input (blending keyboard + TouchControls mobile interface)
+      const touchInput =
+        touchControls?.getInputState?.() ??
+        (typeof window !== 'undefined' ? (window as any).touchControls?.getInputState?.() : null) ??
+        null;
+
+      const kbThrottle = keysDown.has('ArrowUp') || keysDown.has('KeyW') ? 1.0 : 0.0;
+      const kbBrake = keysDown.has('ArrowDown') || keysDown.has('KeyS') ? 1.0 : 0.0;
       const steerLeft = keysDown.has('ArrowLeft') || keysDown.has('KeyA') ? -1.0 : 0.0;
       const steerRight = keysDown.has('ArrowRight') || keysDown.has('KeyD') ? 1.0 : 0.0;
-      const steer = steerLeft + steerRight;
-      const handbrake = keysDown.has('Space');
-      const nitro = keysDown.has('ShiftLeft') || keysDown.has('ShiftRight');
+      const kbSteer = steerLeft + steerRight;
+      const kbHandbrake = keysDown.has('Space');
+      const kbNitro = keysDown.has('ShiftLeft') || keysDown.has('ShiftRight');
+
+      const throttle = Math.max(kbThrottle, touchInput ? touchInput.throttle : 0);
+      const brake = Math.max(kbBrake, touchInput ? touchInput.brake : 0);
+      const steer = Math.abs(touchInput?.steer ?? 0) > 0.001 ? touchInput!.steer : kbSteer;
+      const handbrake = kbHandbrake || Boolean(touchInput?.handbrake);
+      const nitro = kbNitro || Boolean(touchInput?.nitro);
 
       physicsWorld.setControlInput('player', {
         throttle,
