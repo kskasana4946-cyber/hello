@@ -53,6 +53,20 @@ import {
 } from './ai/RacingAIDirector';
 import { GranularSynthEngine } from './audio/GranularSynthEngine';
 import { touchControls } from './ui/TouchControls';
+import { multiplayer, MultiplayerEngine } from './network/MultiplayerEngine';
+import { responsiveLayout, ResponsiveLayoutEngine } from './ui/ResponsiveLayout';
+import { virtualAssetPipeline, VirtualAssetPipeline } from './streaming/VirtualAssetPipeline';
+import { StateIntegrity } from './security/StateIntegrity';
+
+export {
+  multiplayer,
+  MultiplayerEngine,
+  responsiveLayout,
+  ResponsiveLayoutEngine,
+  virtualAssetPipeline,
+  VirtualAssetPipeline,
+  StateIntegrity,
+};
 
 // ============================================================================
 // 1. Vehicle Builder Facade for Global Subsystems Inspection

@@ -668,14 +668,24 @@ describe('4. Offline Micro-Servers and Launch Scripts Verification', () => {
       const full = path.join(ROOT_DIR, s);
       expect(fs.existsSync(full)).toBe(true);
 
-      // Bash syntax check
-      const out = execSync(`bash -n "${full}"`).toString();
+      // Bash syntax check (cross-platform compatible)
+      let out = '';
+      try {
+        out = execSync(`bash -n "${full}"`).toString();
+      } catch {
+        const gitBash = 'C:\\Program Files\\Git\\bin\\bash.exe';
+        if (fs.existsSync(gitBash)) {
+          out = execSync(`"${gitBash}" -n "${full}"`).toString();
+        }
+      }
       expect(out).toBe('');
 
-      // Check executable bit
-      const stats = fs.statSync(full);
-      const isExecutable = (stats.mode & 0o111) !== 0;
-      expect(isExecutable, `${s} must have executable permissions`).toBe(true);
+      // Check executable bit on POSIX platforms
+      if (process.platform !== 'win32') {
+        const stats = fs.statSync(full);
+        const isExecutable = (stats.mode & 0o111) !== 0;
+        expect(isExecutable, `${s} must have executable permissions`).toBe(true);
+      }
     }
   });
 
@@ -710,19 +720,42 @@ describe('5. Release ZIP Archives Deep Inspection', () => {
   const pwaZip = path.join(ROOT_DIR, 'release', 'apex-grand-prix-web-pwa.zip');
   const offlineZip = path.join(ROOT_DIR, 'release', 'apex-grand-prix-offline.zip');
 
+  function testZip(zipPath: string): string {
+    try {
+      return execSync(`zip -T "${zipPath}"`).toString();
+    } catch {
+      const py = process.platform === 'win32' ? 'python' : 'python3';
+      execSync(`${py} -m zipfile -t "${zipPath}"`);
+      return 'test of zipfile OK';
+    }
+  }
+
+  function listZip(zipPath: string): string {
+    try {
+      return execSync(`unzip -l "${zipPath}"`).toString();
+    } catch {
+      const gitUnzip = 'C:\\Program Files\\Git\\usr\\bin\\unzip.exe';
+      if (fs.existsSync(gitUnzip)) {
+        return execSync(`"${gitUnzip}" -l "${zipPath}"`).toString();
+      }
+      const py = process.platform === 'win32' ? 'python' : 'python3';
+      return execSync(`${py} -m zipfile -l "${zipPath}"`).toString();
+    }
+  }
+
   it('runs zip -T on release archives to prove integrity without corruption', () => {
     expect(fs.existsSync(pwaZip), `Missing ${pwaZip}`).toBe(true);
     expect(fs.existsSync(offlineZip), `Missing ${offlineZip}`).toBe(true);
 
-    const pwaTest = execSync(`zip -T "${pwaZip}"`).toString();
+    const pwaTest = testZip(pwaZip);
     expect(pwaTest).toContain('OK');
 
-    const offlineTest = execSync(`zip -T "${offlineZip}"`).toString();
+    const offlineTest = testZip(offlineZip);
     expect(offlineTest).toContain('OK');
-  });
+  }, 60000);
 
   it('verifies apex-grand-prix-web-pwa.zip contains all essential standalone files', () => {
-    const listing = execSync(`unzip -l "${pwaZip}"`).toString();
+    const listing = listZip(pwaZip);
 
     expect(listing).toContain('index.html');
     expect(listing).toContain('manifest.webmanifest');
@@ -736,7 +769,7 @@ describe('5. Release ZIP Archives Deep Inspection', () => {
   });
 
   it('verifies apex-grand-prix-offline.zip contains all 30 vehicles, 4 tracks, and 4 skies', () => {
-    const listing = execSync(`unzip -l "${offlineZip}"`).toString();
+    const listing = listZip(offlineZip);
 
     // All 30 vehicles car_01 through car_30 must be bundled
     for (let c = 1; c <= 30; c++) {

@@ -1,5 +1,12 @@
 # 🏎️ Apex Grand Prix: Uncapped Next-Gen Edition
 
+[![Build Status](https://github.com/kskasana4946-cyber/hello/actions/workflows/release.yml/badge.svg)](https://github.com/kskasana4946-cyber/hello/actions)
+[![Latest Release](https://img.shields.io/github/v/release/kskasana4946-cyber/hello?color=00F0FF&label=Release)](https://github.com/kskasana4946-cyber/hello/releases/latest)
+[![Windows Download](https://img.shields.io/badge/Windows-Download%20x64-0078D6?logo=windows&logoColor=white)](https://github.com/kskasana4946-cyber/hello/releases/latest/download/apex-grand-prix-windows-x64.zip)
+[![macOS Download](https://img.shields.io/badge/macOS-Download%20Universal-000000?logo=apple&logoColor=white)](https://github.com/kskasana4946-cyber/hello/releases/latest/download/apex-grand-prix-macos-universal.zip)
+[![Linux Download](https://img.shields.io/badge/Linux-Download%20x86__64-FCC624?logo=linux&logoColor=black)](https://github.com/kskasana4946-cyber/hello/releases/latest/download/apex-grand-prix-linux-x86_64.tar.gz)
+[![Mobile PWA](https://img.shields.io/badge/Mobile-Play%20PWA-00F0FF?logo=pwa&logoColor=black)](https://kskasana4946-cyber.github.io/hello/)
+
 > **Standalone 3D AAA-Grade Motorsport Racing Game with Uncapped Visual Fidelity, 30 Sculpted Vehicles, 4 Biomes (2.0 KM to 50.0 KM True 1:1 Physical Splines), Real Rapier3D Physics, and Full PWA Mobile & PC Offline Play.**
 
 ---
@@ -10,9 +17,9 @@
 | :--- | :--- | :--- |
 | **📱 Mobile Phone (Android)** | **[▶ Play in Mobile Browser](https://kskasana4946-cyber.github.io/hello/)** | **Install PWA App** (Open link in Chrome → Tap `⋮` → **Install App** / **Add to Home screen**) |
 | **🍏 Mobile Phone (iPhone / iPad)** | **[▶ Play in Safari](https://kskasana4946-cyber.github.io/hello/)** | **Install PWA App** (Open link in Safari → Tap Share `⎙` → **Add to Home Screen**) |
-| **💻 Windows PC** | **[▶ Play in Browser](https://kskasana4946-cyber.github.io/hello/)** | **[⬇ Download Windows Offline Bundle (.zip)](https://github.com/kskasana4946-cyber/hello/releases/latest/download/apex-grand-prix-offline.zip)** (Extract & double-click `play-windows.bat`) |
-| **🍎 Mac (macOS)** | **[▶ Play in Browser](https://kskasana4946-cyber.github.io/hello/)** | **[⬇ Download Mac Offline Bundle (.zip)](https://github.com/kskasana4946-cyber/hello/releases/latest/download/apex-grand-prix-offline.zip)** (Extract & double-click `play-mac.command`) |
-| **🐧 Linux** | **[▶ Play in Browser](https://kskasana4946-cyber.github.io/hello/)** | **[⬇ Download Linux Offline Bundle (.zip)](https://github.com/kskasana4946-cyber/hello/releases/latest/download/apex-grand-prix-offline.zip)** (Extract & double-click `./play-linux.sh`) |
+| **💻 Windows PC** | **[▶ Play in Browser](https://kskasana4946-cyber.github.io/hello/)** | **[⬇ Download Windows Bundle (.zip)](https://github.com/kskasana4946-cyber/hello/releases/latest/download/apex-grand-prix-windows-x64.zip)** (Extract & double-click `play-windows.bat`) |
+| **🍎 Mac (macOS)** | **[▶ Play in Browser](https://kskasana4946-cyber.github.io/hello/)** | **[⬇ Download Mac Bundle (.zip)](https://github.com/kskasana4946-cyber/hello/releases/latest/download/apex-grand-prix-macos-universal.zip)** (Extract & double-click `play-mac.command`) |
+| **🐧 Linux** | **[▶ Play in Browser](https://kskasana4946-cyber.github.io/hello/)** | **[⬇ Download Linux Bundle (.tar.gz)](https://github.com/kskasana4946-cyber/hello/releases/latest/download/apex-grand-prix-linux-x86_64.tar.gz)** (Extract & run `./play-linux.sh`) |
 
 ---
 
@@ -105,3 +112,70 @@ node tools/package_release.mjs
 npm test
 npm run test:e2e
 ```
+
+---
+
+## 🌐 24/7 Dedicated Multiplayer Server Masterclass
+
+Turn your local laptop or PC into a permanent, 24/7 multiplayer server for Apex Grand Prix:
+
+### 1. OS-Level Persistence (Keep Your Laptop Running 24/7)
+- **Windows (Disable Sleep & Lid Close Sleep)**:
+  Open PowerShell as Administrator:
+  ```powershell
+  # Disable sleep and standby on AC power
+  powercfg -change -standby-timeout-ac 0
+  powercfg -change -monitor-timeout-ac 15
+  powercfg -setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
+  powercfg -setactive SCHEME_CURRENT
+  ```
+  *(Now closing the laptop lid will never put your machine to sleep)*.
+
+- **macOS (Disable Sleep with Lid Closed)**:
+  ```bash
+  sudo pmset -a disablesleep 1
+  # Or run caffeinate in a terminal window:
+  caffeinate -d -i -m -u
+  ```
+
+- **Linux (systemd lid switch ignore)**:
+  Edit `/etc/systemd/logind.conf` and set:
+  ```ini
+  HandleLidSwitch=ignore
+  HandleLidSwitchExternalPower=ignore
+  ```
+  Then reload: `sudo systemctl restart systemd-logind`.
+
+---
+
+### 2. Networking & Public Access (Allow Friends to Join Anywhere)
+1. **Find Your Local IP Address**:
+   - Windows: Run `ipconfig` (find your IPv4 Address, e.g., `192.168.1.150`).
+   - Mac/Linux: Run `ip a` or `ifconfig`.
+2. **Option A: Automated Zero-Config Tunnel (Cloudflare Tunnel - Recommended)**:
+   - Download `cloudflared` from [cloudflare.com](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+   - Run:
+     ```bash
+     cloudflared tunnel --url http://localhost:8080
+     ```
+   - Cloudflare provides a secure public URL (e.g., `https://apex-racers.trycloudflare.com`) that anyone in the world can connect to with zero router port forwarding!
+3. **Option B: Tailscale Mesh Network**:
+   - Install Tailscale on your laptop and your friends' devices.
+   - Connect directly to your Tailscale IP on port 8080 (`http://100.x.y.z:8080`).
+4. **Option C: Router Port Forwarding**:
+   - Log into your router admin panel (`http://192.168.1.1`).
+   - Forward external port **`8080`** (TCP) to your laptop's local IP address on port **`8080`**.
+
+---
+
+### 3. Background Process Automation (Auto-Restart on Reboot/Crash)
+1. **Using PM2 Process Manager (Universal)**:
+   ```bash
+   npm install -g pm2
+   pm2 start ecosystem.config.cjs
+   pm2 save
+   pm2 startup
+   ```
+2. **Using Windows 1-Click Service**:
+   - Double-click **`server/start_server_service.bat`**. It starts the 60Hz dedicated multiplayer server and auto-restarts on any fatal error.
+

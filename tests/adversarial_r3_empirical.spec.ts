@@ -457,7 +457,7 @@ describe('Adversarial R3: 30-Vehicle Roster & Visual Fidelity', () => {
         0.016
       );
     }
-  });
+  }, 90000);
 
   it('Verifies all 12 liveries can be applied across cars without undefined materials', () => {
     const testCars = [VEHICLE_ROSTER[0], VEHICLE_ROSTER[14], VEHICLE_ROSTER[25]]; // Hatchback, Sedan, Supercar

@@ -15,6 +15,18 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./assets/icons/icon-192.png" />
   <title>Apex Grand Prix: Uncapped Next-Gen Edition</title>
   <style>
+    :root {
+      --c-void: #0B0E14;
+      --c-surface: #121721;
+      --c-panel: #1A2230;
+      --c-cyan: #00F0FF;
+      --c-amber: #FF5E00;
+      --c-gold: #FFD700;
+      --c-lime: #39FF14;
+      --c-crimson: #FF1E56;
+      --c-text: #F0F4F8;
+      --c-muted: #8A99AD;
+    }
     * {
       box-sizing: border-box;
       margin: 0;
@@ -31,8 +43,8 @@
       -webkit-user-select: none;
       user-select: none;
       overscroll-behavior: none;
-      background-color: #020617;
-      color: #f8fafc;
+      background-color: var(--c-void);
+      color: var(--c-text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     #app {

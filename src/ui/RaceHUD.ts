@@ -166,7 +166,11 @@ export class RaceHUD {
     this.minimapCanvas.width = 160;
     this.minimapCanvas.height = 160;
     this.minimapCanvas.style.cssText = 'display: block; width: 145px; height: 145px; border-radius: 6px;';
-    this.minimapCtx = this.minimapCanvas.getContext('2d');
+    try {
+      this.minimapCtx = this.minimapCanvas.getContext('2d');
+    } catch {
+      this.minimapCtx = null;
+    }
     mapWrap.appendChild(this.minimapCanvas);
     bottomBar.appendChild(mapWrap);
 

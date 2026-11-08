@@ -92,7 +92,20 @@ const assetsPakDest = path.join(OFFLINE_STAGE, 'assets', 'paks');
 if (fs.existsSync(assetsPakSrc)) {
   console.log('  -> Bundling modular assets from assets/paks into offline release...');
   fs.mkdirSync(path.dirname(assetsPakDest), { recursive: true });
-  fs.cpSync(assetsPakSrc, assetsPakDest, { recursive: true });
+  fs.cpSync(assetsPakSrc, assetsPakDest, { recursive: true, dereference: true });
+}
+
+// Helper: Compress Directory into ZIP Archive Cross-Platform
+function compressArchive(sourceDir, zipFilePath) {
+  try {
+    execSync(`zip -q -r "${zipFilePath}" .`, { cwd: sourceDir, stdio: 'ignore' });
+    if (fs.existsSync(zipFilePath) && fs.statSync(zipFilePath).size > 0) return;
+  } catch {}
+
+  // Standard Python zipfile script fallback (universal across Windows, macOS, Linux)
+  const py = process.platform === 'win32' ? 'python' : 'python3';
+  const zipScript = path.join(ROOT_DIR, 'tools', 'zip_dir.py');
+  execSync(`${py} "${zipScript}" "${zipFilePath}" "${sourceDir}"`, { stdio: 'inherit' });
 }
 
 // 4. Compress Release Zip Archives
@@ -101,14 +114,14 @@ console.log('🗜️ Step 4/4: Compressing release ZIP archives...');
 // A. Create apex-grand-prix-web-pwa.zip
 const pwaZipPath = path.join(RELEASE_DIR, 'apex-grand-prix-web-pwa.zip');
 console.log('  -> Compressing apex-grand-prix-web-pwa.zip...');
-execSync(`zip -q -r "${pwaZipPath}" .`, { cwd: PWA_STAGE, stdio: 'inherit' });
+compressArchive(PWA_STAGE, pwaZipPath);
 const pwaStats = fs.statSync(pwaZipPath);
 console.log(`     ✓ Created: apex-grand-prix-web-pwa.zip (${(pwaStats.size / (1024 * 1024)).toFixed(2)} MB)`);
 
 // B. Create apex-grand-prix-offline.zip
 const offlineZipPath = path.join(RELEASE_DIR, 'apex-grand-prix-offline.zip');
 console.log('  -> Compressing apex-grand-prix-offline.zip (with full asset library)...');
-execSync(`zip -q -r "${offlineZipPath}" .`, { cwd: OFFLINE_STAGE, stdio: 'inherit' });
+compressArchive(OFFLINE_STAGE, offlineZipPath);
 const offlineStats = fs.statSync(offlineZipPath);
 console.log(`     ✓ Created: apex-grand-prix-offline.zip (${(offlineStats.size / (1024 * 1024)).toFixed(2)} MB)`);
 

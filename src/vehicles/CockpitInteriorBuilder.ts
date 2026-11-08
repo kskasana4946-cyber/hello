@@ -81,11 +81,17 @@ export interface CockpitInteriorInstance {
  */
 function createTelemetryCanvas(width = 512, height = 256): { canvas: any; ctx: any } {
   if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    return { canvas, ctx };
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        return { canvas, ctx };
+      }
+    } catch {
+      // In headless environments like jsdom, getContext('2d') may throw. Fall through to mockCtx.
+    }
   }
 
   // Headless / Node test fallback
@@ -96,33 +102,33 @@ function createTelemetryCanvas(width = 512, height = 256): { canvas: any; ctx: a
     font: '12px sans-serif',
     textAlign: 'left',
     textBaseline: 'top',
-    fillRect: () => {},
-    strokeRect: () => {},
-    clearRect: () => {},
-    fillText: () => {},
-    strokeText: () => {},
-    beginPath: () => {},
-    closePath: () => {},
-    moveTo: () => {},
-    lineTo: () => {},
-    stroke: () => {},
-    fill: () => {},
-    arc: () => {},
-    roundRect: () => {},
+    fillRect: () => { },
+    strokeRect: () => { },
+    clearRect: () => { },
+    fillText: () => { },
+    strokeText: () => { },
+    beginPath: () => { },
+    closePath: () => { },
+    moveTo: () => { },
+    lineTo: () => { },
+    stroke: () => { },
+    fill: () => { },
+    arc: () => { },
+    roundRect: () => { },
     measureText: (text: string) => ({ width: text.length * 8 }),
     createLinearGradient: () => ({
-      addColorStop: () => {},
+      addColorStop: () => { },
     }),
-    save: () => {},
-    restore: () => {},
+    save: () => { },
+    restore: () => { },
   };
 
   const mockCanvas = {
     width,
     height,
     getContext: () => mockCtx,
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addEventListener: () => { },
+    removeEventListener: () => { },
   };
 
   return { canvas: mockCanvas, ctx: mockCtx };
